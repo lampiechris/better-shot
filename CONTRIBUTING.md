@@ -267,6 +267,14 @@ then open `.build/CompositionPreview.app`. Run
 `BETTERSHOT_CHECK_COMPOSITION=1 bash Tests/run-exports.sh` for focused composition
 checks against an existing test build. It uses a separate
 process identity and sets `BETTERSHOT_TESTING=1` before creating the editor.
+Launch the fixture with `open .build/CompositionPreview.app --args --post`
+to test **Create Social Post…** from a sample capture card.
+
+Feature Announcement opens in its own composer window from the capture preview
+or the freeform composer toolbar. `FeatureAnnouncement` lays out the same
+screenshot and copy in both ratios. Keep preview and paired PNG exports on the
+shared composition renderer. Move the finished folder into place after both
+images have been written.
 
 Image annotations use source-pixel coordinates. `AnnoShapeDrawing` is shared by
 the canvas and export; `AnnotationImageTransform` handles full-resolution rotation

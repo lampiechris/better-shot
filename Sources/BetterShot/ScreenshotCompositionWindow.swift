@@ -5,26 +5,34 @@ import UniformTypeIdentifiers
 @MainActor
 final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
     static let shared = ScreenshotCompositionWindowController()
+    static let announcement = ScreenshotCompositionWindowController(isAnnouncement: true)
+    private let isAnnouncement: Bool
     private var window: NSWindow?
     private var model: ScreenshotCompositionModel?
     private var exportBeforeClosing: (() -> Void)?
     private var captureTask: Task<Void, Never>?
+
+    private init(isAnnouncement: Bool = false) {
+        self.isAnnouncement = isAnnouncement
+        super.init()
+    }
 
     func open(on screen: NSScreen? = nil, images: [URL] = []) {
         if let window {
             if !images.isEmpty { model?.importImages(images) }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
         }
-        let model = ScreenshotCompositionModel()
+        let model = ScreenshotCompositionModel(isAnnouncement: isAnnouncement)
         self.model = model
         if !images.isEmpty { model.importImages(images) }
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Compose Screenshots"
+        window.title = isAnnouncement ? "Feature Announcement" : "Compose Screenshots"
         window.minSize = CGSize(width: 980, height: 680)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.contentView = NSHostingView(rootView: ScreenshotCompositionWindow(model: model,
+            onCaptureWindow: { [weak self] in self?.captureWindow() },
             onExportAvailable: { [weak self] action in self?.exportBeforeClosing = action }))
         self.window = window
         if let screen { window.setFrameOrigin(CGPoint(x: screen.visibleFrame.midX - 590, y: screen.visibleFrame.midY - 390)) }
@@ -61,14 +69,23 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard let model, model.hasUnexportedChanges else { return true }
         let alert = NSAlert()
-        alert.messageText = "Export this composition before closing?"
-        alert.informativeText = "The canvas is kept only in this window. Export a PNG to keep the combined image; individual layers cannot be reopened from it."
-        alert.addButton(withTitle: "Export PNG…")
-        alert.addButton(withTitle: "Discard Changes")
-        alert.addButton(withTitle: "Cancel")
-        alert.buttons[2].keyEquivalent = "\u{1b}"
+        let canExport = !isAnnouncement || model.canExportAnnouncement
+        alert.messageText = isAnnouncement
+            ? (canExport ? "Export this post before closing?" : "Discard this draft?")
+            : "Export this composition before closing?"
+        alert.informativeText = isAnnouncement
+            ? "The editable post is kept only in this window."
+            : "The canvas is kept only in this window. Export a PNG to keep the combined image; individual layers cannot be reopened from it."
+        if canExport {
+            alert.addButton(withTitle: isAnnouncement ? "Export Both Sizes…" : "Export PNG…")
+            alert.addButton(withTitle: "Discard Changes")
+            alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+        } else {
+            alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
+            alert.addButton(withTitle: "Discard Changes")
+        }
         alert.beginSheetModal(for: sender) { [weak self] response in
-            if response == .alertFirstButtonReturn { self?.exportBeforeClosing?() }
+            if canExport && response == .alertFirstButtonReturn { self?.exportBeforeClosing?() }
             else if response == .alertSecondButtonReturn { sender.close() }
         }
         return false
@@ -83,6 +100,7 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
 
 struct ScreenshotCompositionWindow: View {
     @Bindable var model: ScreenshotCompositionModel
+    var onCaptureWindow: () -> Void = {}
     var onExportAvailable: (@escaping () -> Void) -> Void = { _ in }
     @State private var layout: ScreenshotCompositionLayout = .row
     @State private var exportScale: CGFloat = 0
@@ -92,13 +110,21 @@ struct ScreenshotCompositionWindow: View {
     @State private var dropTarget = false
     @State private var confirmRemove = false
     @State private var gestureFrame: CGRect?
+    @State private var announcementFormat: FeatureAnnouncement.Format = .square
+
+    private var isAnnouncement: Bool { model.document.announcement != nil }
+    private var canExport: Bool {
+        isAnnouncement ? model.canExportAnnouncement : !model.document.screenshots.isEmpty
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             toolbar
             Divider()
             HStack(spacing: 0) {
-                inspector.frame(width: 290)
+                Group {
+                    if isAnnouncement { announcementInspector } else { inspector }
+                }.frame(width: 290)
                 Divider()
                 canvas
             }
@@ -108,20 +134,20 @@ struct ScreenshotCompositionWindow: View {
         .frame(minWidth: 960, minHeight: 640)
         .tint(EditorChrome.accent)
         .background(EditorChrome.workspace)
-        .background(TransferToast(status: transferStatus, onRetry: exportPNG,
+        .background(TransferToast(status: transferStatus, onRetry: export,
             onDismiss: { transferStatus = nil }))
         .background(EditorShortcutHandler(scope: .image, perform: { action in
             switch action {
             case .imageUndo: model.undo()
             case .imageRedo: model.redo()
-            case .imageSave, .imageExport: exportPNG()
+            case .imageSave, .imageExport: export()
             case .imageDelete:
                 if model.selection != nil { confirmRemove = true }
             default: return false
             }
             return true
         }))
-        .onAppear { onExportAvailable(exportPNG) }
+        .onAppear { onExportAvailable(export) }
         .alert("Remove this screenshot?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { model.removeSelection() }
             Button("Cancel", role: .cancel) {}
@@ -131,10 +157,18 @@ struct ScreenshotCompositionWindow: View {
 
     private var toolbar: some View {
         HStack(spacing: 8) {
-            Button(action: importImages) { Label("Add Images…", systemImage: "photo.on.rectangle") }
+            Button(action: importImages) {
+                Label(isAnnouncement ? (model.selection == nil ? "Add Screenshot…" : "Replace Screenshot…") : "Add Images…",
+                      systemImage: "photo.on.rectangle")
+            }
                 .disabled(isImporting)
-            Button { ScreenshotCompositionWindowController.shared.captureWindow() } label: {
+            Button(action: onCaptureWindow) {
                 Label("Capture Window", systemImage: "macwindow")
+            }
+            if !isAnnouncement {
+                Button("Feature Announcement…", systemImage: "rectangle.and.text.magnifyingglass") {
+                    ScreenshotCompositionWindowController.announcement.open(on: NSApp.keyWindow?.screen)
+                }
             }
             Divider().frame(height: 22)
             Button { model.undo() } label: { Label("Undo", systemImage: "arrow.uturn.backward").labelStyle(.iconOnly) }
@@ -142,12 +176,63 @@ struct ScreenshotCompositionWindow: View {
             Button { model.redo() } label: { Label("Redo", systemImage: "arrow.uturn.forward").labelStyle(.iconOnly) }
                 .disabled(!model.canRedo).help("Redo")
             Spacer()
-            Button(action: exportPNG) { Label("Export PNG…", systemImage: "arrow.down.circle") }
+            Button(action: export) {
+                Label(isAnnouncement ? "Export Both Sizes…" : "Export PNG…", systemImage: "arrow.down.circle")
+            }
                 .buttonStyle(.borderedProminent)
-                .disabled(model.document.screenshots.isEmpty || isExporting)
+                .disabled(!canExport || isExporting)
         }
         .buttonStyle(EditorButtonStyle())
         .padding(.horizontal, 16).frame(height: 48).studioGlass(cornerRadius: 0)
+    }
+
+    private var announcementInspector: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                section("Post") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Headline").font(.callout)
+                        TextField("Headline", text: announcementText(\.headline, maximum: 90), axis: .vertical)
+                            .textFieldStyle(.roundedBorder).lineLimit(2...3)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Caption (optional)").font(.callout)
+                        TextField("Caption", text: announcementText(\.caption, maximum: 160), axis: .vertical)
+                            .textFieldStyle(.roundedBorder).lineLimit(2...4)
+                    }
+                }
+                section("Logo") {
+                    if let logo = model.document.announcement?.logo {
+                        Image(decorative: logo, scale: 1).resizable().scaledToFit().frame(height: 36)
+                    }
+                    HStack {
+                        Button(model.document.announcement?.logo == nil ? "Add Logo…" : "Replace Logo…", action: importLogo)
+                        if model.document.announcement?.logo != nil {
+                            Button("Remove") { model.change { $0.announcement?.logo = nil } }
+                        }
+                    }
+                }
+                errorControls
+            }.padding(16)
+        }
+        .scrollIndicators(.hidden)
+        .background(EditorChrome.panel)
+    }
+
+    private func announcementText(_ key: WritableKeyPath<FeatureAnnouncement, String>, maximum: Int) -> Binding<String> {
+        Binding(get: { model.document.announcement?[keyPath: key] ?? "" }, set: { value in
+            let limited = String(value.prefix(maximum))
+            guard limited != model.document.announcement?[keyPath: key] else { return }
+            model.change { $0.announcement?[keyPath: key] = limited }
+        })
+    }
+
+    @ViewBuilder
+    private var errorControls: some View {
+        if let error = model.errorMessage {
+            Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            Button("Dismiss") { model.errorMessage = nil }
+        }
     }
 
     private var inspector: some View {
@@ -227,10 +312,7 @@ struct ScreenshotCompositionWindow: View {
                         Button("Remove", systemImage: "trash", role: .destructive) { confirmRemove = true }
                     }
                 }
-                if let error = model.errorMessage {
-                    Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-                    Button("Dismiss") { model.errorMessage = nil }
-                }
+                errorControls
             }.padding(16)
         }
         .scrollIndicators(.hidden)
@@ -313,7 +395,7 @@ struct ScreenshotCompositionWindow: View {
 
     private var canvas: some View {
         GeometryReader { proxy in
-            let size = model.document.size
+            let size = isAnnouncement ? announcementFormat.size : model.document.size
             let scale = max(0.01, min((proxy.size.width - 64) / size.width, (proxy.size.height - 64) / size.height))
             ZStack {
                 EditorChrome.workspace
@@ -321,13 +403,15 @@ struct ScreenshotCompositionWindow: View {
                     TransparencyGrid()
                     // The same renderer drives preview and export, so gradients,
                     // alpha, rounding and shadows cannot diverge between them.
-                    if let image = try? ScreenshotCompositionRenderer.render(model.document, scale: scale) {
+                    if let image = try? ScreenshotCompositionRenderer.render(model.document, scale: scale, format: announcementFormat) {
                         Image(decorative: image, scale: 1).resizable()
                     }
-                    ForEach(model.document.screenshots) { item in
-                        itemControls(item, scale: scale)
+                    if !isAnnouncement {
+                        ForEach(model.document.screenshots) { item in
+                            itemControls(item, scale: scale)
+                        }
                     }
-                    if model.document.screenshots.isEmpty {
+                    if model.document.screenshots.isEmpty && !isAnnouncement {
                         VStack(spacing: 10) {
                             Image(systemName: "photo.on.rectangle").font(.largeTitle)
                             Text("Drop screenshots here").font(.title3.weight(.semibold))
@@ -383,28 +467,53 @@ struct ScreenshotCompositionWindow: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("Drag to move · Drag the blue corner to resize").font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            Picker("Export Scale", selection: $exportScale) {
-                Text("Auto").tag(CGFloat(0))
-                Text("1×").tag(CGFloat(1)); Text("2×").tag(CGFloat(2)); Text("3×").tag(CGFloat(3))
-            }.frame(width: 170)
-                .help("Auto keeps screenshots at least at their original pixel dimensions. Choose 1×, 2×, or 3× for a fixed output size.")
-            Text("\(Int((model.document.size.width * resolvedExportScale).rounded())) × \(Int((model.document.size.height * resolvedExportScale).rounded())) px")
-                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            if isAnnouncement {
+                Picker("Preview", selection: $announcementFormat) {
+                    ForEach(FeatureAnnouncement.Format.allCases) { format in
+                        Text(format.rawValue).tag(format)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 174)
+                Spacer()
+                let size = announcementFormat.size
+                Text("\(Int(size.width)) × \(Int(size.height)) px")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            } else {
+                Text("Drag to move · Drag the blue corner to resize").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Picker("Export Scale", selection: $exportScale) {
+                    Text("Auto").tag(CGFloat(0))
+                    Text("1×").tag(CGFloat(1)); Text("2×").tag(CGFloat(2)); Text("3×").tag(CGFloat(3))
+                }.frame(width: 170)
+                    .help("Auto keeps screenshots at least at their original pixel dimensions. Choose 1×, 2×, or 3× for a fixed output size.")
+                Text("\(Int((model.document.size.width * resolvedExportScale).rounded())) × \(Int((model.document.size.height * resolvedExportScale).rounded())) px")
+                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            }
         }.padding(.horizontal, 16).frame(height: 44).studioGlass(cornerRadius: 0)
     }
 
     private func importImages() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = true
+        panel.allowsMultipleSelection = !isAnnouncement
         panel.canChooseDirectories = false
-        panel.prompt = "Add Images"
+        panel.prompt = isAnnouncement ? "Choose Screenshot" : "Add Images"
         isImporting = true
         panel.begin { response in
             isImporting = false
             if response == .OK { model.importImages(panel.urls) }
+        }
+    }
+
+    private func importLogo() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.image]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Choose Logo"
+        panel.begin { response in
+            if response == .OK, let url = panel.url { model.importAnnouncementLogo(url) }
         }
     }
 
@@ -429,8 +538,23 @@ struct ScreenshotCompositionWindow: View {
         return true
     }
 
-    private func exportPNG() {
-        guard !isExporting, !model.document.screenshots.isEmpty else { return }
+    private func export() {
+        guard !isExporting, canExport else { return }
+        if isAnnouncement {
+            let panel = NSOpenPanel()
+            panel.title = "Export Both Sizes"
+            panel.canChooseDirectories = true
+            panel.canChooseFiles = false
+            panel.canCreateDirectories = true
+            panel.prompt = "Export Both Sizes"
+            panel.begin { response in
+                guard response == .OK, let directory = panel.url else { return }
+                beginExport { snapshot in
+                    try ScreenshotCompositionRenderer.exportAnnouncement(snapshot, to: directory)
+                }
+            }
+            return
+        }
         do { _ = try ScreenshotCompositionRenderer.outputSize(model.document, scale: resolvedExportScale) }
         catch { model.errorMessage = error.localizedDescription; return }
         let panel = NSSavePanel()
@@ -438,22 +562,28 @@ struct ScreenshotCompositionWindow: View {
         panel.nameFieldStringValue = ScreenshotFileNaming.fileName(template: ScreenshotFileNaming.template(), extension: "png")
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            let snapshot = model.document
             let scale = resolvedExportScale
-            isExporting = true
-            transferStatus = .working(stage: .exporting, progress: nil)
-            Task { @MainActor in
-                do {
-                    try await Task.detached(priority: .userInitiated) {
-                        try ScreenshotCompositionRenderer.export(snapshot, scale: scale, to: url)
-                    }.value
-                    model.markExported(snapshot.revision)
-                    transferStatus = .exported(url: url)
-                } catch {
-                    transferStatus = .failed(headline: "Export failed", message: error.localizedDescription, canRetry: true)
-                }
-                isExporting = false
+            beginExport { snapshot in
+                try ScreenshotCompositionRenderer.export(snapshot, scale: scale, to: url)
+                return url
             }
+        }
+    }
+
+    private func beginExport(_ write: @escaping @Sendable (ScreenshotComposition) throws -> URL) {
+        guard !isExporting, canExport else { return }
+        let snapshot = model.document
+        isExporting = true
+        transferStatus = .working(stage: .exporting, progress: nil)
+        Task { @MainActor in
+            do {
+                let url = try await Task.detached(priority: .userInitiated) { try write(snapshot) }.value
+                model.markExported(snapshot.revision)
+                transferStatus = .exported(url: url)
+            } catch {
+                transferStatus = .failed(headline: "Export failed", message: error.localizedDescription, canRetry: true)
+            }
+            isExporting = false
         }
     }
 }

@@ -21,6 +21,7 @@ func checkScreenshotComposition() throws {
     }
     let red = try source(.red, name: "Window A", width: 800, height: 400)
     let blue = try source(.blue, name: "Window B", width: 400, height: 600)
+    try checkFeatureAnnouncement(screenshot: red, replacement: blue, directory: directory)
     var defaults = AnnotationBackgroundSettings()
     defaults.style = .solid(.graphite)
     let model = ScreenshotCompositionModel(defaultLook: defaults)
@@ -183,4 +184,72 @@ func checkScreenshotComposition() throws {
         }
     }
     print("PASS composition import, source resolution, undo, layouts, bounds, layer order, rounded alpha, shadows, 2x PNG, limits and compact light/dark snapshots")
+}
+
+@MainActor
+private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directory: URL) throws {
+    let model = ScreenshotCompositionModel(defaultLook: AnnotationBackgroundSettings(), isAnnouncement: true)
+    let exports = directory.appendingPathComponent("posts", isDirectory: true)
+    try FileManager.default.createDirectory(at: exports, withIntermediateDirectories: false)
+    model.importImages([screenshot])
+    precondition(!model.canExportAnnouncement)
+    do {
+        _ = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
+        preconditionFailure("A post needs a headline")
+    } catch {
+        let remaining = try FileManager.default.contentsOfDirectory(atPath: exports.path)
+        precondition(remaining.isEmpty)
+    }
+    model.change {
+        $0.announcement?.headline = "Edit once. Share in two sizes."
+        $0.announcement?.caption = "BetterShot now exports both square and portrait posts."
+    }
+    model.importAnnouncementLogo(replacement)
+    precondition(model.canExportAnnouncement && model.hasUnexportedChanges)
+    model.importImages([replacement])
+    precondition(model.document.screenshots.count == 1 && model.selection?.name == replacement.lastPathComponent)
+    precondition(model.document.announcement?.hasHeadline == true && model.document.announcement?.logo != nil)
+    model.undo()
+    precondition(model.selection?.name == screenshot.lastPathComponent)
+    model.redo()
+    precondition(model.selection?.name == replacement.lastPathComponent)
+    model.importImages([screenshot, replacement])
+    precondition(model.document.screenshots.count == 1 && model.errorMessage != nil)
+    model.errorMessage = nil
+
+    let first = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
+    let second = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
+    precondition(first != second, "Repeated exports must keep both folders")
+    let names = try FileManager.default.contentsOfDirectory(atPath: first.path)
+    precondition(names.count == 2)
+    for format in FeatureAnnouncement.Format.allCases {
+        let size = format.size
+        let url = first.appendingPathComponent(names.first { $0.hasSuffix("\(format.fileSuffix).png") }!)
+        let source = CGImageSourceCreateWithURL(url as CFURL, nil)!
+        let image = CGImageSourceCreateImageAtIndex(source, 0, nil)!
+        precondition(image.width == Int(size.width) && image.height == Int(size.height))
+        let scaled = try ScreenshotCompositionRenderer.render(model.document, scale: 0.5, format: format)
+        precondition(scaled.width * 2 == image.width && scaled.height * 2 == image.height)
+        let layout = model.document.announcement!.layout(for: format)
+        precondition(layout.headline != nil && layout.caption != nil && layout.logoRect != nil)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        let center = bitmap.colorAt(x: Int(layout.screenshotArea.midX), y: Int(size.height - layout.screenshotArea.midY))!
+        precondition(center.usingColorSpace(.sRGB)!.blueComponent > 0.9, "The full replacement screenshot must render")
+        let logo = bitmap.colorAt(x: Int(layout.logoRect!.midX), y: Int(size.height - layout.logoRect!.midY))!
+        precondition(logo.usingColorSpace(.sRGB)!.blueComponent > 0.9, "The optional logo must render")
+    }
+    var longPost = FeatureAnnouncement()
+    longPost.headline = String(repeating: "機能発表　", count: 18)
+    longPost.caption = String(repeating: "W", count: 160)
+    let compact = longPost.layout(for: .square)
+    precondition(compact.headline != nil && compact.caption != nil && compact.screenshotArea.height > 400)
+
+    let snapshots = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        .appendingPathComponent(".build/editor-snapshots")
+    try FileManager.default.createDirectory(at: snapshots, withIntermediateDirectories: true)
+    for scheme in [ColorScheme.light, .dark] {
+        try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
+                     to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
+    }
+    print("PASS Feature Announcement replacement and undo, rendered logo and copy, and paired square/portrait exports")
 }

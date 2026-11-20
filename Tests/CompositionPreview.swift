@@ -9,7 +9,11 @@ struct CompositionPreview {
         app.setActivationPolicy(.regular)
         let root = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let fixture = root.appendingPathComponent("Resources/Onboarding/screenshot-demo.png")
-        ScreenshotCompositionWindowController.shared.open(images: [fixture, fixture])
+        if CommandLine.arguments.contains("--post") {
+            PreviewOverlay.shared.show(url: fixture, automaticallyDismiss: false, thumbnail: NSImage(contentsOf: fixture))
+        } else {
+            ScreenshotCompositionWindowController.shared.open(images: [fixture, fixture])
+        }
         app.run()
     }
 }

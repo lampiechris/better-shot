@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Turn a screenshot into a Feature Announcement with a headline and optional caption and logo, then export square and portrait PNGs together.
 - Choose 9:16, 4:5, and 3:4 for portrait images and videos, and set a canvas ratio directly in Compose Screenshots.
 - **Compose Screenshots** combines imported images and repeated window captures on
   one canvas, with drag/resize, layer order, per-image corners/shadows, row/column/grid

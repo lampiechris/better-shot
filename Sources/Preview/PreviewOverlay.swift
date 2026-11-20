@@ -376,6 +376,18 @@ final class PreviewOverlay {
         PreviewPanelPresenter.shared.openEditor(for: savedURL)
     }
 
+    func createSocialPost(from url: URL) {
+        guard !Self.isVideo(url) else { return }
+        let savedURL = DeckStaging.retain(url)
+        guard !DeckStaging.isStaged(savedURL) else {
+            showSaveFailure(for: url)
+            return
+        }
+        let screen = currentScreen
+        remove(url)
+        ScreenshotCompositionWindowController.announcement.open(on: screen, images: [savedURL])
+    }
+
     func perform(_ tool: OverlayTool, for url: URL) {
         switch tool {
         case .pin:
@@ -648,6 +660,13 @@ struct PreviewCardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isVideo ? "Open recording editor" : "Open image editor")
+            }
+        }
+        .contextMenu {
+            if !isVideo && overlay.transferStatus(for: url) == nil {
+                Button("Create Social Post…", systemImage: "rectangle.and.text.magnifyingglass") {
+                    overlay.createSocialPost(from: url)
+                }
             }
         }
         .focusable()

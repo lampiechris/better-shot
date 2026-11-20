@@ -30,9 +30,23 @@ The new canvas reads General's Default Look when opened. Editing it does not
 change those defaults or any imported files. Window captures exclude the native
 baked-in shadow, allowing the per-image shadow to remain adjustable.
 
+## Feature Announcement
+
+1. Right-click a screenshot in the floating preview and choose **Create Social Post…**,
+   or open **Feature Announcement…** from the **Compose Screenshots** toolbar.
+2. Add a headline and, if you like, a caption and logo. Use **Replace Screenshot…**
+   to change the image while keeping the copy and logo.
+3. Switch the preview between **1:1** and **4:5** at the bottom of the window.
+4. Click **Export Both Sizes…** and pick a folder. BetterShot creates a new
+   subfolder with two PNGs at 1080 × 1080 and 1080 × 1350 pixels.
+
+The post is editable while its window is open. It has its own undo history
+and can stay open alongside a freeform composition.
+
 ## First-pass limits
 
-- One composition window; the canvas is kept in memory. PNG exports are flattened;
+- One freeform composition window and one Feature Announcement window, each
+  kept in memory. PNG exports are flattened;
   editable project save/reopen, autosave, and crash recovery are not implemented.
   Closing an unexported canvas offers Export, Discard, or Cancel. Export leaves the
   window open so the completed file can be checked before closing.
