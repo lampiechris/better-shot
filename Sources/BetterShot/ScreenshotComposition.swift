@@ -193,7 +193,7 @@ final class ScreenshotCompositionModel {
         var failed: [String] = []
         let isAnnouncement = document.announcement != nil
         guard !isAnnouncement || urls.count <= 1 else {
-            errorMessage = "Feature Announcement uses one screenshot. Choose a single image."
+            errorMessage = "A social post uses one screenshot. Choose a single image."
             return
         }
         let existing = isAnnouncement ? [] : document.screenshots
@@ -367,10 +367,10 @@ nonisolated enum ScreenshotCompositionRenderer {
         try files.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? files.removeItem(at: staging) }
         for format in FeatureAnnouncement.Format.allCases {
-            let name = ScreenshotFileNaming.fileName(template: "Feature Announcement \(format.fileSuffix)", extension: "png")
+            let name = ScreenshotFileNaming.fileName(template: "\(FeatureAnnouncement.title) \(format.fileSuffix)", extension: "png")
             try export(document, scale: 1, to: staging.appendingPathComponent(name), format: format)
         }
-        let folder = ScreenshotFileNaming.fileName(template: "Feature Announcement", extension: "")
+        let folder = ScreenshotFileNaming.fileName(template: FeatureAnnouncement.title, extension: "")
         let destination = ScreenshotFileNaming.uniqueURL(for: folder, in: directory)
         try files.moveItem(at: staging, to: destination)
         return destination

@@ -18,7 +18,7 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
     private var exportBeforeClosing: (() -> Void)?
     private var captureTask: Task<Void, Never>?
     private var saveTask: Task<Bool, Never>?
-    private var untitledPostName = "Feature Announcement"
+    private var untitledPostName = FeatureAnnouncement.title
 
     private init(isAnnouncement: Bool = false) {
         self.isAnnouncement = isAnnouncement
@@ -44,7 +44,7 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
         self.model = model
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = isAnnouncement ? "Feature Announcement" : "Compose Screenshots"
+        window.title = isAnnouncement ? untitledPostName : "Compose Screenshots"
         window.minSize = CGSize(width: 980, height: 680)
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -59,7 +59,7 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
             let postCloseGuard = EditorCloseGuard()
             self.postCloseGuard = postCloseGuard
             postCloseGuard.hasUnsavedChanges = { [weak model] in model?.hasUnsavedPostChanges == true }
-            postCloseGuard.projectName = { [weak self] in self?.window?.title ?? "Feature Announcement" }
+            postCloseGuard.projectName = { [weak self] in self?.window?.title ?? FeatureAnnouncement.title }
             postCloseGuard.isFinishingSave = { [weak self] in self?.saveTask != nil }
             postCloseGuard.finishSave = { [weak self] in await self?.saveTask?.value == true }
             postCloseGuard.onDecision = { [weak self] decision, done in
@@ -128,7 +128,7 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
         let copy = ScreenshotCompositionModel(isAnnouncement: true)
         copy.loadPost(document, from: nil)
         let controller = Self.newPostWindow()
-        controller.untitledPostName = (window?.title ?? "Feature Announcement") + " Copy"
+        controller.untitledPostName = (window?.title ?? FeatureAnnouncement.title) + " Copy"
         controller.show(copy, on: window?.screen)
     }
 
@@ -334,7 +334,7 @@ struct ScreenshotCompositionWindow: View {
                     Button("Duplicate Post", systemImage: "plus.square.on.square", action: onDuplicatePost)
                         .disabled(!model.hasPostContent)
                 } else {
-                    Button("Feature Announcement…", systemImage: "rectangle.and.text.magnifyingglass") {
+                    Button("New Social Post", systemImage: "rectangle.and.text.magnifyingglass") {
                         ScreenshotCompositionWindowController.createPost(on: NSApp.keyWindow?.screen)
                     }
                 }

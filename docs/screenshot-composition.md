@@ -30,10 +30,10 @@ The new canvas reads General's Default Look when opened. Editing it does not
 change those defaults or any imported files. Window captures exclude the native
 baked-in shadow, allowing the per-image shadow to remain adjustable.
 
-## Feature Announcement
+## Social Post
 
 1. Right-click a screenshot in the floating preview and choose **Create Social Post…**,
-   or choose **Post → Feature Announcement…** in **Compose Screenshots**.
+   or choose **Post → New Social Post** in **Compose Screenshots**.
 2. Choose **Headline Above**, **Screenshot First**, or **Side by Side** under **Layout**.
    Side by Side works well with short copy and a tall screenshot. BetterShot balances
    two-line headlines automatically. Press **Option–Return** in the headline to choose where it wraps.

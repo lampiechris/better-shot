@@ -220,6 +220,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
 
     let first = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
     let second = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
+    precondition(first.lastPathComponent == "Social Post", "Exports use the current editor name")
     precondition(first != second, "Repeated exports must keep both folders")
     let names = try FileManager.default.contentsOfDirectory(atPath: first.path)
     precondition(names.count == 2)
@@ -273,7 +274,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         let detail = media.detail!
         precondition(detail.card.maxY < media.screenshotRect.minY)
         precondition(detail.imageRect.width > selection.width * media.screenshotRect.width)
-        let url = calloutFolder.appendingPathComponent("Feature Announcement \(format.fileSuffix).png")
+        let url = calloutFolder.appendingPathComponent("Social Post \(format.fileSuffix).png")
         let bitmap = NSBitmapImageRep(data: try Data(contentsOf: url))!
         func color(_ x: CGFloat, _ y: CGFloat) -> NSColor {
             bitmap.colorAt(x: Int(x), y: Int(format.size.height - y))!.usingColorSpace(.sRGB)!
@@ -352,7 +353,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
-    print("PASS Feature Announcement callouts, paired exports, lossless editable project round trip, and independent copies")
+    print("PASS Social Post layouts, callouts, paired exports, lossless project round trip, and independent copies")
 }
 
 @MainActor

@@ -3,6 +3,7 @@ import CoreText
 import Foundation
 
 nonisolated struct FeatureAnnouncement: Sendable {
+    static let title = "Social Post"
     static let headlineLimit = 90
     static let captionLimit = 160
 

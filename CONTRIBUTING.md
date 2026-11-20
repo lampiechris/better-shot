@@ -270,7 +270,7 @@ process identity and sets `BETTERSHOT_TESTING=1` before creating the editor.
 Launch the fixture with `open .build/CompositionPreview.app --args --post`
 to test **Create Social Post…** from a sample capture card.
 
-Feature Announcement opens in its own composer window from the capture preview
+Social Post opens in its own composer window from the capture preview
 or the freeform composer toolbar. `FeatureAnnouncement` lays out the same
 screenshot and copy in both ratios. Preview, callout selection, and paired PNG
 exports share this geometry. Older post files without a layout use Headline Above.

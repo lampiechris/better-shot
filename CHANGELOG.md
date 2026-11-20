@@ -15,10 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Choose Headline Above, Screenshot First, or Side by Side for a Feature Announcement, with balanced headlines and support for manual line breaks.
-- Save, reopen, and duplicate editable Feature Announcement posts with their images and callouts included.
+- Choose Headline Above, Screenshot First, or Side by Side for a social post, with balanced headlines and support for manual line breaks.
+- Save, reopen, and duplicate editable social posts with their images and callouts included.
 - Highlight a screenshot detail with a magnified callout and preview square or portrait posts at phone width.
-- Turn a screenshot into a Feature Announcement with a headline and optional caption and logo, then export square and portrait PNGs together.
+- Turn a screenshot into a social post with a headline and optional caption and logo, then export square and portrait PNGs together.
 - Choose 9:16, 4:5, and 3:4 for portrait images and videos, and set a canvas ratio directly in Compose Screenshots.
 - **Compose Screenshots** combines imported images and repeated window captures on
   one canvas, with drag/resize, layer order, per-image corners/shadows, row/column/grid
