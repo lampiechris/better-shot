@@ -26,6 +26,7 @@ nonisolated enum ExportAspectPreset: String, Codable, CaseIterable, Sendable {
     case vertical9x16
     case square
     case portrait4x5
+    case portrait3x4
 
     var title: String {
         switch self {
@@ -36,6 +37,7 @@ nonisolated enum ExportAspectPreset: String, Codable, CaseIterable, Sendable {
         case .vertical9x16: "9:16"
         case .square: "1:1"
         case .portrait4x5: "4:5"
+        case .portrait3x4: "3:4"
         }
     }
 
@@ -48,6 +50,7 @@ nonisolated enum ExportAspectPreset: String, Codable, CaseIterable, Sendable {
         case .vertical9x16: "Vertical 9:16 - Shorts, Reels, TikTok"
         case .square: "Square 1:1"
         case .portrait4x5: "Portrait 4:5 - feed posts"
+        case .portrait3x4: "Portrait 3:4 - feed posts"
         }
     }
 
@@ -61,6 +64,7 @@ nonisolated enum ExportAspectPreset: String, Codable, CaseIterable, Sendable {
         case .vertical9x16: 9.0 / 16.0
         case .square: 1
         case .portrait4x5: 4.0 / 5.0
+        case .portrait3x4: 3.0 / 4.0
         }
     }
 

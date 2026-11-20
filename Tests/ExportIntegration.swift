@@ -145,6 +145,7 @@ struct ExportIntegration {
             source as CFURL, UTType.png.identifier as CFString, 1, nil)!
         CGImageDestinationAddImage(destination, image, nil)
         precondition(CGImageDestinationFinalize(destination))
+        try checkSocialImageExports(source: source, directory: directory)
         try benchmarkImageExports(image: image, directory: directory)
         try await checkCaptureStorage(image: image, source: source, directory: directory)
         try await checkScreenshotCopyAndSave(source: source, directory: directory)
@@ -901,7 +902,8 @@ private func checkStudioSaveUpdatesSavedVideo(movie: URL, directory: URL) async 
     defer { window.contentViewController = nil }
     window.makeKeyAndOrderFront(nil)
     try await Task.sleep(for: .seconds(1))
-    model.exportAspect = .wide16x9
+    model.exportAspect = .portrait3x4
+    let portraitSize = model.previewCanvasSize
     model.saveProject()
     window.performClose(nil)
     precondition(window.isVisible, "Closing right after Save keeps the editor open until the saved file is updated")
@@ -910,8 +912,43 @@ private func checkStudioSaveUpdatesSavedVideo(movie: URL, directory: URL) async 
     }
     precondition(!window.isVisible, "The editor closes once Save has updated the saved file")
     let closed = try await videoSize(saved)
-    precondition(closed.width > closed.height, "Closing after Save must not cancel the update, got \(closed)")
+    precondition(closed == portraitSize && closed.width * 4 == closed.height * 3,
+                 "A saved 3:4 video must match the editor canvas, got \(closed)")
     print("PASS Studio Save updates the recording's saved file in place, even when the editor closes right away")
+}
+
+@MainActor
+private func checkSocialImageExports(source: URL, directory: URL) throws {
+    let formats: [(AnnotationBackgroundAspectRatio, CropAspectRatio, Int, Int)] = [
+        (.nineSixteen, .nineSixteen, 9, 16), (.fourFive, .fourFive, 4, 5), (.threeFour, .threeFour, 3, 4)
+    ]
+    let model = AnnotationEditorModel()
+    model.load(url: source)
+    defer { model.releaseEditorResources() }
+    for (canvas, crop, width, height) in formats {
+        model.beginCropping()
+        model.setCropAspect(crop)
+        let cropWidth = model.cropRect.width * model.imageSize.width
+        let cropHeight = model.cropRect.height * model.imageSize.height
+        precondition(abs(cropWidth / cropHeight - CGFloat(width) / CGFloat(height)) < 0.000001)
+        model.cancelCrop()
+
+        var settings = AnnotationBackgroundSettings()
+        settings.style = .solid(.graphite)
+        settings.padding = 0
+        settings.aspectRatio = canvas
+        let document = AnnotationDocument(shapes: [], background: settings)
+        let reopened = try JSONDecoder().decode(AnnotationDocument.self, from: JSONEncoder().encode(document))
+        precondition(reopened.backgroundSettings.aspectRatio == canvas)
+        let url = directory.appendingPathComponent("social-\(width)x\(height).png")
+        try AnnotationRenderer.render(sourceURL: source, shapes: [], backgroundSettings: reopened.backgroundSettings,
+                                      destinationURL: url, contentType: .png)
+        let output = CGImageSourceCreateWithURL(url as CFURL, nil)
+            .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }!
+        precondition(output.width == 1920 && abs(output.width * height - output.height * width) < width,
+                     "PNG dimensions must match the selected portrait canvas without shrinking the image")
+    }
+    print("PASS portrait image crop ratios, saved presets, and PNG dimensions")
 }
 
 @MainActor

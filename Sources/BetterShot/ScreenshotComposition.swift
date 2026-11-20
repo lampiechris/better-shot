@@ -185,6 +185,12 @@ final class ScreenshotCompositionModel {
         selectedID = document.screenshots.last?.id
     }
 
+    func setCanvasAspect(_ aspect: CanvasAspectRatio) {
+        guard let ratio = aspect.numericValue else { return }
+        let shortEdge: CGFloat = 1080
+        resizeCanvas(CGSize(width: shortEdge * max(1, ratio), height: shortEdge / min(1, ratio)))
+    }
+
     func resizeCanvas(_ size: CGSize) {
         change { doc in
             doc.size = CGSize(width: min(6000, max(400, size.width.rounded())),

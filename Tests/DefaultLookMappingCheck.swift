@@ -54,9 +54,16 @@ enum DefaultLookMappingCheck {
         bundledConfig.style = .bundledImage("not-a-real-asset")
         assert(bundledConfig.annotationBackgroundSettings.style == .none, "missing bundled asset must fall back to none")
 
-        var portraitConfig = BeautifierConfig()
-        portraitConfig.aspectRatio = .nineSixteen
-        assert(portraitConfig.annotationBackgroundSettings.aspectRatio == .auto, "9:16 has no editor twin, must fall back to auto")
+        let portraitRatios: [(CanvasAspectRatio, AnnotationBackgroundAspectRatio)] = [
+            (.nineSixteen, .nineSixteen), (.fourFive, .fourFive), (.threeFour, .threeFour)
+        ]
+        for (canvas, editor) in portraitRatios {
+            var portraitConfig = BeautifierConfig()
+            portraitConfig.aspectRatio = canvas
+            let settings = portraitConfig.annotationBackgroundSettings
+            assert(settings.aspectRatio == editor && settings.aspectRatio.value == canvas.numericValue,
+                   "Portrait ratios must carry over to the editor")
+        }
 
         assert(BeautifierConfig().annotationBackgroundSettings.style == .none, "default config must map to no background")
 

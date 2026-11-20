@@ -11,7 +11,8 @@ Open **Compose Screenshots** from BetterShot's menu tray.
    Select any image on the canvas or in the front-to-back screenshot list. Drag
    its blue bottom-right handle to resize while retaining its proportions.
    X, Y, and Width also accept typed values in the left inspector.
-4. Set canvas dimensions, background (transparent, solid color, or one of the
+4. Choose **Aspect Ratio** for a preset with a 1080-pixel short edge, or enter
+   your own width and height. Set the background (transparent, solid color, or one of the
    shared gradients), padding, and layout spacing. Padding constrains image bounds;
    spacing is applied by Arrange. Adjust corners, shadow amount, and shadow style
    independently for the selected screenshot. Backward/Forward changes overlap

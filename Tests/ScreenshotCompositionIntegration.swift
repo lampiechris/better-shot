@@ -158,6 +158,22 @@ func checkScreenshotComposition() throws {
     // Compact and normal editor snapshots use disposable images and preferences.
     let preview = ScreenshotCompositionModel(defaultLook: defaults)
     preview.importImages([red, blue]); preview.change { $0.arrange(.row) }
+    let originalSize = preview.document.size
+    let portraitSizes: [(CanvasAspectRatio, CGSize)] = [
+        (.nineSixteen, CGSize(width: 1080, height: 1920)),
+        (.fourFive, CGSize(width: 1080, height: 1350)),
+        (.threeFour, CGSize(width: 1080, height: 1440))
+    ]
+    for (aspect, size) in portraitSizes {
+        preview.setCanvasAspect(aspect)
+        precondition(preview.document.size == size)
+        precondition(preview.document.screenshots.allSatisfy { preview.document.contentRect.contains($0.frame) })
+        let outputSize = try ScreenshotCompositionRenderer.outputSize(preview.document, scale: 1)
+        precondition(outputSize == size)
+        preview.undo()
+        precondition(preview.document.size == originalSize)
+    }
+    preview.setCanvasAspect(.fourFive)
     let snapshots = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(".build/editor-snapshots")
     try FileManager.default.createDirectory(at: snapshots, withIntermediateDirectories: true)
     for scheme in [ColorScheme.light, .dark] {

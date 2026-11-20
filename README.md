@@ -54,6 +54,9 @@ subtitles and teleprompter speech tracking need macOS 26.
   then export a combined high-resolution PNG. [First-pass limits and usage](docs/screenshot-composition.md).
 - **Recording:** a display, window, or area, with system audio, microphone, camera, and a teleprompter.
 - **Video editor:** cuts, speed, zooms, captions, masks, camera layouts, cursor styles, and 3D shots.
+- Choose social aspect ratios (9:16, 4:5, 3:4, and 1:1) in Crop, in the image
+  editor's aspect-ratio menu when framing with a background, in Compose Screenshots,
+  or under **Video aspect ratio** in the video editor's **Background** tab.
   Export MP4 or MOV at 30 or 60 fps.
 - **Sharing:** copy, save, pin, or drag from the floating preview, browse everything in the
   Media Gallery, and share links through your own Cloudflare R2 bucket.

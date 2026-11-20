@@ -154,6 +154,11 @@ struct ScreenshotCompositionWindow: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 section("Canvas") {
+                    Menu("Aspect Ratio") {
+                        ForEach(CanvasAspectRatio.allCases.filter { $0 != .auto }, id: \.self) { aspect in
+                            Button(aspect.rawValue) { model.setCanvasAspect(aspect) }
+                        }
+                    }
                     valueSlider("Width", value: Binding(get: { model.document.size.width }, set: {
                         model.resizeCanvas(CGSize(width: $0, height: model.document.size.height))
                     }), range: 400...6000)

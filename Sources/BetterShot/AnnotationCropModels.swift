@@ -20,6 +20,8 @@ enum CropAspectRatio: String, CaseIterable, Identifiable {
     case nineSixteen
     case fourThree
     case threeTwo
+    case fourFive
+    case threeFour
 
     var id: String { rawValue }
 
@@ -32,6 +34,8 @@ enum CropAspectRatio: String, CaseIterable, Identifiable {
         case .nineSixteen: "9:16"
         case .fourThree: "4:3"
         case .threeTwo: "3:2"
+        case .fourFive: "4:5"
+        case .threeFour: "3:4"
         }
     }
 
@@ -52,6 +56,10 @@ enum CropAspectRatio: String, CaseIterable, Identifiable {
             return 4.0 / 3.0
         case .threeTwo:
             return 3.0 / 2.0
+        case .fourFive:
+            return 4.0 / 5.0
+        case .threeFour:
+            return 3.0 / 4.0
         }
     }
 

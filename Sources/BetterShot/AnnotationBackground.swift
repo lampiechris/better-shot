@@ -371,6 +371,9 @@ enum AnnotationBackgroundAspectRatio: String, CaseIterable, Identifiable {
     case fourThree
     case threeTwo
     case sixteenNine
+    case nineSixteen
+    case fourFive
+    case threeFour
 
     var id: String { rawValue }
 
@@ -381,6 +384,9 @@ enum AnnotationBackgroundAspectRatio: String, CaseIterable, Identifiable {
         case .fourThree: "4:3"
         case .threeTwo: "3:2"
         case .sixteenNine: "16:9"
+        case .nineSixteen: "9:16"
+        case .fourFive: "4:5"
+        case .threeFour: "3:4"
         }
     }
 
@@ -391,6 +397,9 @@ enum AnnotationBackgroundAspectRatio: String, CaseIterable, Identifiable {
         case .fourThree: 4 / 3
         case .threeTwo: 3 / 2
         case .sixteenNine: 16 / 9
+        case .nineSixteen: 9 / 16
+        case .fourFive: 4 / 5
+        case .threeFour: 3 / 4
         }
     }
 }
@@ -549,11 +558,14 @@ extension BeautifierConfig {
         settings.shadow = shadowStrength
         settings.alignment = AnnotationBackgroundAlignment(rawValue: alignment.rawValue) ?? .center
         settings.aspectRatio = switch aspectRatio {
-        case .auto, .nineSixteen: .auto
+        case .auto: .auto
         case .square: .square
         case .fourThree: .fourThree
         case .threeTwo: .threeTwo
         case .sixteenNine: .sixteenNine
+        case .nineSixteen: .nineSixteen
+        case .fourFive: .fourFive
+        case .threeFour: .threeFour
         }
         if case .customWallpaper(let wallpaper) = settings.style {
             settings.customWallpaper = wallpaper
