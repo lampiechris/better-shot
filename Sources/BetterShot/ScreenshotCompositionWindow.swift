@@ -263,6 +263,7 @@ struct ScreenshotCompositionWindow: View {
     @State private var confirmRemove = false
     @State private var gestureFrame: CGRect?
     @State private var announcementFormat: FeatureAnnouncement.Format = .square
+    @GestureState private var panOffset: CGSize = .zero
     @State private var phonePreview = false
     @State private var typographyRole: SocialPostTypography.Role = .headline
     @State private var showSaveBrandStyle = false
@@ -421,6 +422,7 @@ struct ScreenshotCompositionWindow: View {
                     screenshotStyleControls
                 }
                 if !model.document.screenshots.isEmpty {
+                    section("Screenshot") { screenshotFramingControls }
                     section("Magnified Callout") { calloutControls }
                 }
                 errorControls
@@ -579,7 +581,7 @@ struct ScreenshotCompositionWindow: View {
     @ViewBuilder
     private var calloutControls: some View {
         if let draft = detailDraft {
-            Text("Drag over the detail to magnify.").font(.caption).foregroundStyle(.secondary)
+            Text("Drag over the detail on the original screenshot.").font(.caption).foregroundStyle(.secondary)
             DisclosureGroup("Adjust Selection") {
                 VStack(spacing: 6) {
                     detailSlider("Left", \.origin.x, range: 0...(1 - draft.width))
@@ -835,6 +837,66 @@ struct ScreenshotCompositionWindow: View {
                 set: { value in model.change { $0.announcement?.appearance[keyPath: key] = value } })
     }
 
+    private var screenshotFrame: Binding<FeatureAnnouncement.Frame> {
+        let format = announcementFormat
+        return Binding(get: { model.document.announcement?.framing[format] ?? .init() },
+                       set: { value in model.change { $0.announcement?.framing[format] = value } })
+    }
+
+    private var screenshotFramingControls: some View {
+        let format = announcementFormat
+        let frame = screenshotFrame
+        let isSeparate = Binding(
+            get: { model.document.announcement?.framing[override: format] != nil },
+            set: { separate in
+                model.change { document in
+                    guard var post = document.announcement else { return }
+                    post.framing[override: format] = separate ? post.framing.shared : nil
+                    document.announcement = post
+                }
+            }
+        )
+        return VStack(alignment: .leading, spacing: 8) {
+            Toggle("Adjust \(format.rawValue) Separately", isOn: isSeparate)
+                .help("Keep a different crop and position for this post size.")
+            Picker("Screenshot Framing", selection: frame.mode) {
+                ForEach(FeatureAnnouncement.Frame.Mode.allCases, id: \.self) { mode in
+                    Text(mode.rawValue).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            if frame.wrappedValue.mode == .fill {
+                valueSlider("Zoom", value: frame.zoom, range: FeatureAnnouncement.Frame.zoomRange,
+                            format: .magnification(fractionDigits: 2))
+                DisclosureGroup("Position") {
+                    VStack(spacing: 6) {
+                        valueSlider("Horizontal", value: frame.horizontal, range: 0...1, format: .percent())
+                        valueSlider("Vertical", value: frame.vertical, range: 0...1, format: .percent())
+                    }.padding(.top, 7)
+                }
+                Text("Drag the screenshot to reposition it.").font(.caption).foregroundStyle(.secondary)
+            }
+            DisclosureGroup("Crop") {
+                VStack(spacing: 6) {
+                    trimSlider("Left", value: frame.left, opposite: frame.right.wrappedValue)
+                    trimSlider("Right", value: frame.right, opposite: frame.left.wrappedValue)
+                    trimSlider("Top", value: frame.top, opposite: frame.bottom.wrappedValue)
+                    trimSlider("Bottom", value: frame.bottom, opposite: frame.top.wrappedValue)
+                }.padding(.top, 7)
+            }
+            if frame.wrappedValue != .init() {
+                Button("Reset Framing") { frame.wrappedValue = .init() }
+            }
+        }
+        .disabled(detailDraft != nil)
+    }
+
+    private func trimSlider(_ title: String, value: Binding<CGFloat>, opposite: CGFloat) -> some View {
+        let limit = max(0, FeatureAnnouncement.Frame.maximumTrim - opposite)
+        return valueSlider(title, value: value, range: 0...limit, format: .percent())
+    }
+
     private func valueSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>,
                              format: InspectorValueFormat = .pixels) -> some View {
         InspectorSlider(title, value: value, range: range, format: format, onEditingChanged: {
@@ -866,6 +928,7 @@ struct ScreenshotCompositionWindow: View {
             let previewWidth = isAnnouncement && phonePreview ? min(390, proxy.size.width - 64) : proxy.size.width - 64
             let scale = max(0.01, min(previewWidth / size.width, (proxy.size.height - 64) / size.height))
             let renderScale = isAnnouncement ? min(1, scale * displayScale) : scale
+            let document = previewDocument
             ZStack {
                 EditorChrome.workspace
                 ZStack(alignment: .topLeading) {
@@ -873,14 +936,18 @@ struct ScreenshotCompositionWindow: View {
                     // The same renderer drives preview and export, so gradients,
                     // alpha, rounding and shadows cannot diverge between them.
                     if let image = try? ScreenshotCompositionRenderer.render(
-                        model.document, scale: renderScale, format: announcementFormat, showsCalloutOutline: detailDraft == nil
+                        document, scale: renderScale, format: announcementFormat, showsCalloutOutline: detailDraft == nil
                     ) {
                         Image(decorative: image, scale: 1).resizable()
                     }
-                    if let draft = detailDraft, let announcement = model.document.announcement,
+                    if let announcement = document.announcement,
                        let media = announcement.layout(for: announcementFormat,
-                           screenshot: model.document.screenshots.first?.image).media {
-                        detailSelection(draft, screenshot: media.screenshotRect, canvasHeight: size.height, scale: scale)
+                           screenshot: document.screenshots.first?.image).media {
+                        if let draft = detailDraft {
+                            detailSelection(draft, screenshot: media.screenshotRect, canvasHeight: size.height, scale: scale)
+                        } else if announcement.framing[announcementFormat].mode == .fill {
+                            screenshotPan(media, canvasHeight: size.height, scale: scale)
+                        }
                     } else if !isAnnouncement {
                         ForEach(model.document.screenshots) { item in
                             itemControls(item, scale: scale)
@@ -900,6 +967,40 @@ struct ScreenshotCompositionWindow: View {
                 .overlay(Rectangle().stroke(dropTarget ? EditorChrome.accent : EditorChrome.border, lineWidth: dropTarget ? 3 : 1))
             }
         }
+    }
+
+    private var previewDocument: ScreenshotComposition {
+        var document = model.document
+        if detailDraft != nil {
+            document.announcement?.framing[announcementFormat] = .init()
+        } else if panOffset != .zero, let post = document.announcement,
+                  let media = post.layout(for: announcementFormat, screenshot: document.screenshots.first?.image).media {
+            document.announcement?.framing[announcementFormat] = post.framing[announcementFormat]
+                .panned(by: panOffset, within: media.visibleSource)
+        }
+        return document
+    }
+
+    private func screenshotPan(_ media: FeatureAnnouncement.MediaLayout, canvasHeight: CGFloat, scale: CGFloat) -> some View {
+        let rect = media.screenshotRect
+        let width = rect.width * scale
+        let height = rect.height * scale
+        let frame = screenshotFrame
+        return Rectangle().fill(.clear)
+            .frame(width: width, height: height)
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 3)
+                .updating($panOffset) { value, offset, _ in
+                    offset = CGSize(width: value.translation.width / width, height: value.translation.height / height)
+                }
+                .onEnded { value in
+                    let offset = CGSize(width: value.translation.width / width, height: value.translation.height / height)
+                    let current = frame.wrappedValue
+                    let updated = current.panned(by: offset, within: media.visibleSource)
+                    if updated != current { frame.wrappedValue = updated }
+                })
+            .offset(x: rect.minX * scale, y: (canvasHeight - rect.maxY) * scale)
+            .accessibilityHidden(true)
     }
 
     private func detailSelection(_ draft: CGRect, screenshot: CGRect, canvasHeight: CGFloat, scale: CGFloat) -> some View {

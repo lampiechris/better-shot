@@ -41,11 +41,23 @@ baked-in shadow, allowing the per-image shadow to remain adjustable.
    while swapping the image.
 3. Click **Add Callout**, drag over a detail on the screenshot, then click
    **Apply Callout**. You can also enter the selection under **Adjust Selection**.
-   Replacing the screenshot clears its callout. Undo restores both.
+   Replacing the screenshot clears its callout and crop. Undo restores them.
 4. Switch between **1:1** and **4:5**, or turn on **Phone Size** to check either
    layout at up to 390 points wide.
 5. Click **Export Both Sizes…** and pick a folder. BetterShot creates a new
    subfolder with two PNGs at 1080 × 1080 and 1080 × 1350 pixels.
+
+### Crop and position the screenshot
+
+- Under **Screenshot**, use **Fit** to show the entire cropped image or **Fill**
+  to cover the available space. In Fill, adjust **Zoom** and drag the image to
+  position it. The **Position** controls also accept typed values.
+- Expand **Crop** and trim any edge. The original screenshot stays in the project.
+- Framing applies to both sizes by default. Select a size, then turn on
+  **Adjust 1:1 Separately** or **Adjust 4:5 Separately** to give it its own settings.
+  Turn that setting off to return to the shared framing.
+- Edit a callout on the full screenshot. Its inset still shows the selected
+  detail when the crop hides it from the main image.
 
 ### Typography
 
@@ -61,7 +73,7 @@ field. BetterShot can reduce the type size to fit each export layout.
   It contains the layout, screenshot, text and typography, background, framing, logo, and callout.
 - Double-click a saved post in Finder or choose **Post → Open Post…** in either composer.
 - Choose **Post → Duplicate Post** to open an independent copy, then save it under its own name.
-  Replacing the screenshot clears its callout and keeps the text and logo.
+  Replacing the screenshot clears its callout and screenshot framing and keeps the text and logo.
 
 ### Brand styles
 
@@ -72,7 +84,7 @@ text colours and adds a backing for text over images or transparency. The
 
 Use **Framing** to set padding, spacing, screenshot corners, and the amount and
 style of the screenshot shadow. Choose **Presets → Save Brand Style…** to reuse
-the background, accent, logo, framing, and typography across posts. Applying a preset is one
+the background, accent, logo, canvas styling, and typography across posts. Applying a preset is one
 undoable edit. A saved post embeds any background image and logo.
 
 ## First-pass limits

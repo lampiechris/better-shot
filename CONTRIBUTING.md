@@ -274,8 +274,11 @@ Social Post opens in its own composer window from the capture preview
 or the freeform composer toolbar. `FeatureAnnouncement` lays out the same
 screenshot and copy in both ratios. Preview, callout selection, and paired PNG
 exports share this geometry. Older post files without a layout use Headline Above.
-Callouts store normalized top-left screenshot
-coordinates so both ratios enlarge the same original pixels. Phone Size affects
+Callouts and screenshot crops use normalized top-left source coordinates.
+Screenshot framing is shared by default, with optional overrides per format.
+Store these edits with the post and clear them when the screenshot changes.
+When editing a callout, show the full screenshot so any source detail can be
+selected. The exported inset always uses the original pixels. Phone Size affects
 the preview scale only. Move the finished folder into place after both
 images have been written.
 
@@ -287,8 +290,8 @@ Social Post stores opaque sRGB colours and the logo in the project. Applying a
 brand style copies the values from `SocialPostBrandStyleStore`. Keep preview and
 PNG export on the same text contrast and callout colour calculations.
 Both composers share the background and screenshot-style controls, background
-preset artwork, and screenshot shadow renderer. Social Post stores its background
-artwork and framing in the post and in saved brand styles.
+preset artwork, and screenshot shadow renderer. Social Post stores background
+artwork and canvas styling in the post and in saved brand styles.
 Headline and caption typography is stored with the appearance, independent of
 copy. Core Text resolves typography for preview and both PNG sizes.
 

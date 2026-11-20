@@ -302,12 +302,14 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     precondition(defaultPost.announcement.arrangement == .headlineAbove, "Posts without a layout field use Headline Above")
     precondition(defaultPost.announcement.palette == .default, "Posts without a palette use the original colours")
     precondition(defaultPost.announcement.appearance.isDefault)
+    precondition(defaultPost.announcement.framing == .init(), "Older posts fit the full original screenshot")
     try checkBrandStyles(model, directory: directory)
     try checkSocialPostAppearance(model, replacement: replacement, directory: directory)
     try checkSocialPostTypography(model, directory: directory)
     model.change { $0.announcement?.arrangement = .screenshotFirst }
     model.calloutDraft = selection.offsetBy(dx: 0.02, dy: 0.01)
     model.applyCalloutDraft()
+    try checkSocialPostFraming(model, replacement: replacement)
     let savedRevision = model.document.revision
     let savedCallout = model.document.announcement?.callout
     try FeatureAnnouncementProject.write(model.document, to: postURL)
@@ -321,6 +323,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     precondition(reopened.document.announcement?.callout == savedCallout)
     precondition(reopened.document.announcement?.arrangement == .screenshotFirst)
     precondition(reopened.document.announcement?.palette == model.document.announcement?.palette)
+    precondition(reopened.document.announcement?.framing == model.document.announcement?.framing)
     precondition(reopened.selection?.name == fixture.lastPathComponent)
     try FileManager.default.removeItem(at: fixture)
     let reopenedImage = try ScreenshotCompositionRenderer.render(reopened.document, scale: 1, format: .portrait)
@@ -359,7 +362,56 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
-    print("PASS Social Post layouts, callouts, typography, paired exports, brand styles, lossless project round trip, and independent copies")
+    print("PASS Social Post layouts, framing, callouts, typography, paired exports, brand styles, lossless project round trip, and independent copies")
+}
+
+@MainActor
+private func checkSocialPostFraming(_ model: ScreenshotCompositionModel, replacement: URL) throws {
+    var framing = FeatureAnnouncement.Framing()
+    framing.shared.left = 0.5
+    framing[override: .portrait] = FeatureAnnouncement.Frame(mode: .fill, zoom: 2, horizontal: 0, vertical: 0)
+    model.change { $0.announcement?.framing = framing }
+    let source = model.selection!.image
+    let post = model.document.announcement!
+    let square = post.layout(for: .square, screenshot: source).media!
+    let portrait = post.layout(for: .portrait, screenshot: source).media!
+    precondition(square.visibleSource == CGRect(x: 0.5, y: 0, width: 0.5, height: 1))
+    precondition(abs(square.screenshotRect.width - square.screenshotRect.height) < 0.000_001)
+    precondition(portrait.visibleSource.origin == .zero && portrait.visibleSource.height <= 0.5)
+    precondition(square.detail?.source == post.callout && portrait.detail?.source == post.callout)
+
+    for format in FeatureAnnouncement.Format.allCases {
+        let media = post.layout(for: format, screenshot: source).media!
+        let output = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(model.document, scale: 1, format: format))
+        func color(at point: CGPoint) -> NSColor {
+            output.colorAt(x: Int(point.x), y: Int(format.size.height - point.y))!.usingColorSpace(.sRGB)!
+        }
+        let viewport = media.screenshotRect
+        let main = color(at: CGPoint(x: viewport.midX, y: viewport.midY))
+        if format == .square {
+            precondition(main.blueComponent > 0.55, "Fit must show the remaining right-hand pixels")
+        } else {
+            precondition(main.redComponent > 0.85, "Fill must show the zoomed top-left pixels")
+            let rect = media.imageRect(in: viewport)
+            let detail = post.callout!
+            let edge = CGPoint(x: rect.minX + detail.minX * rect.width,
+                               y: rect.maxY - detail.midY * rect.height)
+            let withoutOutline = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(
+                model.document, scale: 1, format: format, showsCalloutOutline: false))
+            let plain = withoutOutline.colorAt(x: Int(edge.x), y: Int(format.size.height - edge.y))!.usingColorSpace(.sRGB)!
+            precondition(abs(plain.redComponent - color(at: edge).redComponent) > 0.1,
+                         "The outline must follow the source after zoom and pan")
+        }
+        let inset = media.detail!.imageRect
+        precondition(color(at: CGPoint(x: inset.midX, y: inset.midY)).redComponent > 0.85,
+                     "The inset must still show the original pixels even when cropped out of the screenshot")
+    }
+    let moved = framing[.portrait].panned(by: CGSize(width: -10, height: -10), within: portrait.visibleSource)
+    precondition(moved.horizontal == 1 && moved.vertical == 1)
+    model.importImages([replacement])
+    precondition(model.document.announcement?.framing == .init())
+    model.undo()
+    precondition(model.document.announcement?.framing == framing)
 }
 
 @MainActor

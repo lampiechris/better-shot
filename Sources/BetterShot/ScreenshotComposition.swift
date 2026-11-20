@@ -226,6 +226,7 @@ final class ScreenshotCompositionModel {
             change {
                 $0.screenshots = existing + imported
                 $0.announcement?.callout = nil
+                $0.announcement?.framing = .init()
             }
             selectedID = imported.last?.id
         }
@@ -299,6 +300,7 @@ final class ScreenshotCompositionModel {
         change {
             $0.screenshots.removeAll { $0.id == selectedID }
             $0.announcement?.callout = nil
+            $0.announcement?.framing = .init()
         }
         selectedID = document.screenshots.last?.id
     }
@@ -376,12 +378,13 @@ nonisolated enum ScreenshotCompositionRenderer {
                                                     outputScale: post == nil ? 1 : scale)
             context.saveGState()
             context.addPath(path); context.clip()
-            context.interpolationQuality = pixelWidth == CGFloat(item.image.width)
-                && pixelHeight == CGFloat(item.image.height) ? .none : .high
-            context.draw(item.image, in: rect)
+            let imageRect = media?.imageRect(in: rect) ?? rect
+            context.interpolationQuality = (media == nil || media?.visibleSource == FeatureAnnouncement.Frame.wholeImage)
+                && pixelWidth == CGFloat(item.image.width) && pixelHeight == CGFloat(item.image.height) ? .none : .high
+            context.draw(item.image, in: imageRect)
             context.restoreGState()
             if showsCalloutOutline {
-                media?.detail?.drawOutline(in: context, screenshot: rect, clip: path)
+                media?.detail?.drawOutline(in: context, screenshot: imageRect, clip: path)
             }
         }
         context.interpolationQuality = .high

@@ -43,6 +43,91 @@ nonisolated struct FeatureAnnouncement: Sendable {
     var arrangement: Arrangement = .headlineAbove
     var palette: SocialPostPalette = .default
     var appearance = SocialPostAppearance()
+    var framing = Framing()
+
+    struct Framing: Codable, Equatable, Sendable {
+        var shared = Frame()
+        var square: Frame?
+        var portrait: Frame?
+
+        subscript(override format: Format) -> Frame? {
+            get { format == .square ? square : portrait }
+            set {
+                if format == .square { square = newValue } else { portrait = newValue }
+            }
+        }
+
+        subscript(format: Format) -> Frame {
+            get { self[override: format] ?? shared }
+            set {
+                if self[override: format] == nil { shared = newValue }
+                else { self[override: format] = newValue }
+            }
+        }
+
+        var isValid: Bool {
+            shared.isValid && square?.isValid != false && portrait?.isValid != false
+        }
+    }
+
+    struct Frame: Codable, Equatable, Sendable {
+        enum Mode: String, Codable, CaseIterable, Sendable {
+            case fit = "Fit"
+            case fill = "Fill"
+        }
+
+        var mode: Mode = .fit
+        var left: CGFloat = 0
+        var right: CGFloat = 0
+        var top: CGFloat = 0
+        var bottom: CGFloat = 0
+        var zoom: CGFloat = 1
+        var horizontal: CGFloat = 0.5
+        var vertical: CGFloat = 0.5
+
+        static let maximumTrim: CGFloat = 0.95
+        static let zoomRange: ClosedRange<CGFloat> = 1...4
+        static let wholeImage = CGRect(x: 0, y: 0, width: 1, height: 1)
+
+        var isValid: Bool {
+            [left, right, top, bottom, horizontal, vertical].allSatisfy { (0...1).contains($0) }
+                && left + right <= Self.maximumTrim + 0.000_001
+                && top + bottom <= Self.maximumTrim + 0.000_001
+                && Self.zoomRange.contains(zoom)
+        }
+
+        private var crop: CGRect {
+            CGRect(x: left, y: top, width: 1 - left - right, height: 1 - top - bottom)
+        }
+
+        func placement(of image: CGImage, in area: CGRect) -> (rect: CGRect, source: CGRect) {
+            let crop = self.crop
+            let pixels = CGSize(width: crop.width * CGFloat(image.width), height: crop.height * CGFloat(image.height))
+            if mode == .fit {
+                return (FeatureAnnouncement.fit(pixels, in: area), crop)
+            }
+            let scale = max(area.width / pixels.width, area.height / pixels.height) * zoom
+            let width = min(crop.width, area.width / (scale * CGFloat(image.width)))
+            let height = min(crop.height, area.height / (scale * CGFloat(image.height)))
+            return (area, CGRect(x: crop.minX + (crop.width - width) * horizontal,
+                                 y: crop.minY + (crop.height - height) * vertical, width: width, height: height))
+        }
+
+        func panned(by offset: CGSize, within visibleSource: CGRect) -> Frame {
+            // The offset is a fraction of the preview viewport. Dragging the image
+            // right or down moves the window toward the left or top of the source.
+            var frame = self
+            let horizontalTravel = crop.width - visibleSource.width
+            let verticalTravel = crop.height - visibleSource.height
+            if horizontalTravel > 0.000_001 {
+                frame.horizontal = min(1, max(0, horizontal - offset.width * visibleSource.width / horizontalTravel))
+            }
+            if verticalTravel > 0.000_001 {
+                frame.vertical = min(1, max(0, vertical - offset.height * visibleSource.height / verticalTravel))
+            }
+            return frame
+        }
+    }
 
     // Source coordinates are normalized with the origin at the top left.
     static let defaultCallout = CGRect(x: 0.375, y: 0.375, width: 0.25, height: 0.25)
@@ -96,8 +181,17 @@ nonisolated struct FeatureAnnouncement: Sendable {
 
     struct MediaLayout {
         let screenshotRect: CGRect
+        let visibleSource: CGRect
         let insetAboveScreenshot: CGFloat
         let detail: Detail?
+
+        // The source is top-left normalized. The CGContext uses bottom-left coordinates.
+        func imageRect(in viewport: CGRect) -> CGRect {
+            let width = viewport.width / visibleSource.width
+            let height = viewport.height / visibleSource.height
+            return CGRect(x: viewport.minX - visibleSource.minX * width,
+                          y: viewport.maxY - (1 - visibleSource.minY) * height, width: width, height: height)
+        }
     }
 
     struct Detail {
@@ -153,10 +247,11 @@ nonisolated struct FeatureAnnouncement: Sendable {
         }
     }
 
-    func mediaLayout(for image: CGImage, in area: CGRect) -> MediaLayout {
-        let full = Self.fit(image, in: area)
+    private func mediaLayout(for image: CGImage, in area: CGRect, frame: Frame) -> MediaLayout {
         guard let callout, let crop = Self.crop(image, to: callout) else {
-            return MediaLayout(screenshotRect: full, insetAboveScreenshot: max(0, area.maxY - full.maxY), detail: nil)
+            let placement = frame.placement(of: image, in: area)
+            return MediaLayout(screenshotRect: placement.rect, visibleSource: placement.source,
+                               insetAboveScreenshot: max(0, area.maxY - placement.rect.maxY), detail: nil)
         }
 
         let gap = appearance.spacing * (2.0 / 3.0)
@@ -167,14 +262,15 @@ nonisolated struct FeatureAnnouncement: Sendable {
         let cardHeight = fittedDetail.height + rim * 2
         let screenshotLimit = CGRect(x: 0, y: 0, width: area.width,
                                      height: area.height - cardHeight - gap)
-        let fittedScreenshot = Self.fit(image, in: screenshotLimit)
+        let placement = frame.placement(of: image, in: screenshotLimit)
+        let fittedScreenshot = placement.rect
         let unused = max(0, (area.height - fittedScreenshot.height - gap - cardHeight) / 2)
         let inset = CGRect(x: area.midX - fittedDetail.width / 2, y: area.minY + unused + rim,
                            width: fittedDetail.width, height: fittedDetail.height)
         let card = inset.insetBy(dx: -rim, dy: -rim)
         let screenshot = CGRect(x: area.midX - fittedScreenshot.width / 2, y: card.maxY + gap,
                                 width: fittedScreenshot.width, height: fittedScreenshot.height)
-        return MediaLayout(screenshotRect: screenshot, insetAboveScreenshot: unused,
+        return MediaLayout(screenshotRect: screenshot, visibleSource: placement.source, insetAboveScreenshot: unused,
                            detail: Detail(source: callout, image: crop, imageRect: inset, card: card, accent: palette.accent))
     }
 
@@ -224,7 +320,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
             screenshotArea = CGRect(x: bounds.minX, y: bounds.minY + (screenshotFirst ? copyHeight + gap : 0),
                                     width: bounds.width, height: bounds.height - copyHeight - gap)
         }
-        let media = screenshot.map { mediaLayout(for: $0, in: screenshotArea) }
+        let media = screenshot.map { mediaLayout(for: $0, in: screenshotArea, frame: framing[format]) }
         let copyOffset: CGFloat
         if columns {
             copyOffset = (copyHeight - bounds.height) / 2
@@ -239,9 +335,13 @@ nonisolated struct FeatureAnnouncement: Sendable {
     }
 
     static func fit(_ image: CGImage, in bounds: CGRect, centered: Bool = true) -> CGRect {
-        let scale = min(bounds.width / CGFloat(image.width), bounds.height / CGFloat(image.height))
-        let width = CGFloat(image.width) * scale
-        let height = CGFloat(image.height) * scale
+        fit(CGSize(width: image.width, height: image.height), in: bounds, centered: centered)
+    }
+
+    private static func fit(_ size: CGSize, in bounds: CGRect, centered: Bool = true) -> CGRect {
+        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        let width = size.width * scale
+        let height = size.height * scale
         return CGRect(x: centered ? bounds.midX - width / 2 : bounds.minX,
                       y: centered ? bounds.midY - height / 2 : bounds.maxY - height,
                       width: width, height: height)
