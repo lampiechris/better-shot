@@ -47,10 +47,18 @@ baked-in shadow, allowing the per-image shadow to remain adjustable.
 5. Click **Export Both Sizes…** and pick a folder. BetterShot creates a new
    subfolder with two PNGs at 1080 × 1080 and 1080 × 1350 pixels.
 
+### Typography
+
+Expand **Typography** in the left inspector and select **Headline** or **Caption**. Set the
+typeface, weight, alignment, maximum size, and letter spacing for that block.
+Use **Automatic Colour** for contrast with the background, or turn it off to
+choose a text colour. Press **Option–Return** to place a line break in either
+field. BetterShot can reduce the type size to fit each export layout.
+
 ### Save and reuse a post
 
 - Choose **Post → Save Post** or press **⌘S** to save a `.bettershotpost` file.
-  It contains the layout, screenshot, text, background, framing, logo, and callout.
+  It contains the layout, screenshot, text and typography, background, framing, logo, and callout.
 - Double-click a saved post in Finder or choose **Post → Open Post…** in either composer.
 - Choose **Post → Duplicate Post** to open an independent copy, then save it under its own name.
   Replacing the screenshot clears its callout and keeps the text and logo.
@@ -64,7 +72,7 @@ text colours and adds a backing for text over images or transparency. The
 
 Use **Framing** to set padding, spacing, screenshot corners, and the amount and
 style of the screenshot shadow. Choose **Presets → Save Brand Style…** to reuse
-the background, accent, logo, and framing across posts. Applying a preset is one
+the background, accent, logo, framing, and typography across posts. Applying a preset is one
 undoable edit. A saved post embeds any background image and logo.
 
 ## First-pass limits

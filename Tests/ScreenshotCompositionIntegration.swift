@@ -304,6 +304,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     precondition(defaultPost.announcement.appearance.isDefault)
     try checkBrandStyles(model, directory: directory)
     try checkSocialPostAppearance(model, replacement: replacement, directory: directory)
+    try checkSocialPostTypography(model, directory: directory)
     model.change { $0.announcement?.arrangement = .screenshotFirst }
     model.calloutDraft = selection.offsetBy(dx: 0.02, dy: 0.01)
     model.applyCalloutDraft()
@@ -358,7 +359,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
-    print("PASS Social Post layouts, callouts, paired exports, brand styles, lossless project round trip, and independent copies")
+    print("PASS Social Post layouts, callouts, typography, paired exports, brand styles, lossless project round trip, and independent copies")
 }
 
 @MainActor
@@ -421,9 +422,87 @@ private func checkSocialPostAppearance(_ model: ScreenshotCompositionModel, repl
     let reopened = try FeatureAnnouncementProject.read(from: project)
     guard case .image(let background) = reopened.announcement.appearance.background else { preconditionFailure() }
     precondition(background.width > 0 && reopened.announcement.appearance.screenshot == style)
+    precondition(reopened.announcement.appearance.typography == .default, "Projects without typography use the original defaults")
     let reopenedImage = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(reopened.makeDocument(), scale: 1))
     precondition(reopenedImage.colorAt(x: 5, y: 5)!.blueComponent > 0.9,
                  "The reopened project draws its embedded background image")
+}
+
+@MainActor
+private func checkSocialPostTypography(_ model: ScreenshotCompositionModel, directory: URL) throws {
+    let navy = SocialPostPalette.RGB(red: 0.12, green: 0.19, blue: 0.45)
+    let headline = SocialPostTypography.TextStyle(typeface: .serif, weight: .semibold, alignment: .center,
+                                                  maxSize: 68, tracking: 3, colour: navy)
+    let caption = SocialPostTypography.TextStyle(typeface: .monospaced, weight: .bold, alignment: .right, maxSize: 30)
+    let typography = SocialPostTypography(headline: headline, caption: caption)
+    var document = model.document
+    document.announcement?.headline = "A little more detail"
+    document.announcement?.caption = "First line\nSecond line"
+    document.announcement?.appearance.typography = typography
+    let post = document.announcement!
+    let exported = try ScreenshotCompositionRenderer.exportAnnouncement(document, to: directory)
+    for format in FeatureAnnouncement.Format.allCases {
+        let layout = post.layout(for: format, screenshot: document.screenshots[0].image)
+        let titleFrame = layout.headline!
+        let captionFrame = layout.caption!
+        let titleLine = (CTFrameGetLines(titleFrame) as! [CTLine])[0]
+        let captionLines = CTFrameGetLines(captionFrame) as! [CTLine]
+        precondition(captionLines.count == 2 && CTLineGetStringRange(captionLines[1]).location == 11,
+                     "Caption line breaks stay in both formats")
+        func attributes(_ line: CTLine) -> NSDictionary {
+            let run = (CTLineGetGlyphRuns(line) as! [CTRun])[0]
+            return CTRunGetAttributes(run)
+        }
+        let titleAttributes = attributes(titleLine)
+        let captionAttributes = attributes(captionLines[0])
+        let titleFont = titleAttributes[kCTFontAttributeName] as! CTFont
+        let captionFont = captionAttributes[kCTFontAttributeName] as! CTFont
+        precondition(CTFontCopyPostScriptName(titleFont) == CTFontCopyPostScriptName(headline.font(size: 68)))
+        precondition(CTFontCopyPostScriptName(captionFont) == CTFontCopyPostScriptName(caption.font(size: 30)))
+        precondition(CTFontGetSize(titleFont) == 68 && CTFontGetSize(captionFont) == 30)
+        precondition(titleAttributes[kCTKernAttributeName] as? CGFloat == 3)
+        let colour = titleAttributes[kCTForegroundColorAttributeName] as! CGColor
+        precondition(colour == navy.cgColor)
+
+        var titleOrigin = CGPoint.zero
+        var captionOrigin = CGPoint.zero
+        CTFrameGetLineOrigins(titleFrame, CFRange(location: 0, length: 1), &titleOrigin)
+        CTFrameGetLineOrigins(captionFrame, CFRange(location: 0, length: 1), &captionOrigin)
+        let titleWidth = CGFloat(CTLineGetTypographicBounds(titleLine, nil, nil, nil))
+        let captionWidth = CGFloat(CTLineGetTypographicBounds(captionLines[0], nil, nil, nil))
+        precondition(abs(titleOrigin.x - (CTFrameGetPath(titleFrame).boundingBox.width - titleWidth) / 2) < 2)
+        precondition(abs(captionOrigin.x + captionWidth - CTFrameGetPath(captionFrame).boundingBox.width) < 2)
+
+        let file = exported.appendingPathComponent("Social Post \(format.fileSuffix).png")
+        let bitmap = NSBitmapImageRep(data: try Data(contentsOf: file))!
+        let titleRect = CTFrameGetPath(titleFrame).boundingBox.offsetBy(dx: 0, dy: layout.copyOffset)
+        let top = Int(format.size.height - titleRect.maxY)
+        let bottom = Int(format.size.height - titleRect.minY)
+        let containsInk = stride(from: top, to: bottom, by: 3).contains { y in
+            stride(from: Int(titleRect.minX), to: Int(titleRect.maxX), by: 3).contains { x in
+                guard let pixel = bitmap.colorAt(x: x, y: y) else { return false }
+                return abs(pixel.redComponent - navy.red) < 0.035
+                    && abs(pixel.greenComponent - navy.green) < 0.035 && abs(pixel.blueComponent - navy.blue) < 0.035
+            }
+        }
+        precondition(containsInk, "The chosen headline colour must reach the \(format.rawValue) export")
+    }
+
+    let project = directory.appendingPathComponent("Typography.bettershotpost")
+    try FeatureAnnouncementProject.write(document, to: project)
+    let reopened = try FeatureAnnouncementProject.read(from: project)
+    precondition(reopened.announcement.appearance.typography == typography)
+    let library = directory.appendingPathComponent("Type Styles.plist")
+    try SocialPostBrandStyleStore(url: library).save(name: "Studio Type", palette: post.palette,
+                                                    logo: post.logo, appearance: post.appearance)
+    let savedStyle = SocialPostBrandStyleStore(url: library).styles[0]
+    let fresh = ScreenshotCompositionModel(defaultLook: AnnotationBackgroundSettings(), isAnnouncement: true)
+    fresh.change { $0.announcement?.headline = "Keep my headline" }
+    fresh.applyBrandStyle(savedStyle)
+    precondition(fresh.document.announcement?.headline == "Keep my headline")
+    precondition(fresh.document.announcement?.appearance.typography == typography)
+    fresh.undo()
+    precondition(fresh.document.announcement?.appearance.typography == .default)
 }
 
 @MainActor

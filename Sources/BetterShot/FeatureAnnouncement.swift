@@ -198,11 +198,15 @@ nonisolated struct FeatureAnnouncement: Sendable {
         }
         if let logoRect { top = logoRect.minY - 28 }
         let colours = appearance.textColours(palette: palette)
-        let title = Self.textFrame(headline, size: columns ? 62 : 76, maxHeight: columns ? 300 : 190, bold: true,
-                                   x: margin, top: top, width: width, color: colours.headline)
+        let headlineStyle = appearance.typography.headline
+        let captionStyle = appearance.typography.caption
+        let title = Self.textFrame(headline, size: headlineStyle.maxSize ?? SocialPostTypography.Role.headline.defaultSize(inColumns: columns),
+                                   maxHeight: columns ? 300 : 190, style: headlineStyle, balance: true,
+                                   x: margin, top: top, width: width, color: (headlineStyle.colour ?? colours.headline).cgColor)
         if let title { top -= title.height + 16 }
-        let subtitle = Self.textFrame(caption, size: columns ? 32 : 37, maxHeight: columns ? 166 : 110, bold: false,
-                                      x: margin, top: top, width: width, color: colours.caption)
+        let subtitle = Self.textFrame(caption, size: captionStyle.maxSize ?? SocialPostTypography.Role.caption.defaultSize(inColumns: columns),
+                                      maxHeight: columns ? 166 : 110, style: captionStyle, balance: false,
+                                      x: margin, top: top, width: width, color: (captionStyle.colour ?? colours.caption).cgColor)
         let copyBottom = if let subtitle { top - subtitle.height }
             else if title != nil { top + 16 }
             else { logoRect?.minY ?? top }
@@ -231,7 +235,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
         }
         return Layout(size: size, screenshotArea: screenshotArea, logoRect: logoRect,
                       headline: title?.frame, caption: subtitle?.frame, media: media, copyOffset: copyOffset,
-                      copyBacking: copyBacking, backingColour: colours.backing)
+                      copyBacking: copyBacking, backingColour: colours.backing?.cgColor)
     }
 
     static func fit(_ image: CGImage, in bounds: CGRect, centered: Bool = true) -> CGRect {
@@ -244,23 +248,25 @@ nonisolated struct FeatureAnnouncement: Sendable {
     }
 
     private static func textFrame(
-        _ value: String, size: CGFloat, maxHeight: CGFloat, bold: Bool,
+        _ value: String, size: CGFloat, maxHeight: CGFloat, style: SocialPostTypography.TextStyle, balance: Bool,
         x: CGFloat, top: CGFloat, width: CGFloat, color: CGColor
     ) -> (frame: CTFrame, height: CGFloat)? {
         let unwrapped = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !unwrapped.isEmpty else { return nil }
-        let text = bold ? value.replacingOccurrences(of: "\r\n", with: "\n")
+        let text = value.replacingOccurrences(of: "\r\n", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: .newlines)
-            .map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }.joined(separator: "\n") : unwrapped
+            .map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }.joined(separator: "\n")
+        let paragraph = style.alignment.paragraph
         var fontSize = size
         while fontSize >= 14 {
-            let style: CTFontUIFontType = bold ? .emphasizedSystem : .system
-            let font = CTFontCreateUIFontForLanguage(style, fontSize, nil)
-                ?? CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
-            let attributes: [NSAttributedString.Key: Any] = [
-                NSAttributedString.Key(kCTFontAttributeName as String): font,
+            var attributes: [NSAttributedString.Key: Any] = [
+                NSAttributedString.Key(kCTFontAttributeName as String): style.font(size: fontSize),
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
             ]
+            if let paragraph { attributes[NSAttributedString.Key(kCTParagraphStyleAttributeName as String)] = paragraph }
+            if style.tracking != 0 {
+                attributes[NSAttributedString.Key(kCTKernAttributeName as String)] = style.tracking * fontSize / size
+            }
             func fittedFrame(_ copy: String) -> (frame: CTFrame, height: CGFloat)? {
                 let attributed = NSAttributedString(string: copy, attributes: attributes)
                 let typesetter = CTFramesetterCreateWithAttributedString(attributed)
@@ -275,7 +281,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
                 return CTFrameGetVisibleStringRange(frame).length == range.length ? (frame, height) : nil
             }
             if let frame = fittedFrame(text) {
-                if bold, !text.contains("\n"), CFArrayGetCount(CTFrameGetLines(frame.frame)) == 2,
+                if balance, !text.contains("\n"), CFArrayGetCount(CTFrameGetLines(frame.frame)) == 2,
                    let balanced = balancedHeadline(text, width: width, attributes: attributes),
                    let balancedFrame = fittedFrame(balanced) {
                     return balancedFrame
@@ -284,9 +290,9 @@ nonisolated struct FeatureAnnouncement: Sendable {
             }
             fontSize -= 2
         }
-        // A pasted headline can contain more line breaks than fit at any readable size.
+        // A pasted paragraph can contain more breaks than fit at any readable size.
         if text != unwrapped {
-            return textFrame(unwrapped, size: size, maxHeight: maxHeight, bold: bold,
+            return textFrame(unwrapped, size: size, maxHeight: maxHeight, style: style, balance: balance,
                              x: x, top: top, width: width, color: color)
         }
         return nil

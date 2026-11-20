@@ -24,9 +24,12 @@ nonisolated struct SocialPostAppearance: Sendable {
     var padding: CGFloat = 72
     var spacing: CGFloat = 48
     var screenshot: CompositionScreenshotStyle?
+    var typography: SocialPostTypography = .default
 
     var isDefault: Bool {
-        if case .solid = background { return padding == 72 && spacing == 48 && screenshot == nil }
+        if case .solid = background {
+            return padding == 72 && spacing == 48 && screenshot == nil && typography == .default
+        }
         return false
     }
 
@@ -44,10 +47,11 @@ nonisolated struct SocialPostAppearance: Sendable {
         }
     }
 
-    func textColours(palette: SocialPostPalette) -> (headline: CGColor, caption: CGColor, backing: CGColor?) {
+    func textColours(palette: SocialPostPalette) -> (headline: SocialPostPalette.RGB, caption: SocialPostPalette.RGB,
+                                                    backing: SocialPostPalette.RGB?) {
         switch background {
         case .solid:
-            return (palette.background.readableForeground.cgColor, palette.caption.cgColor, nil)
+            return (palette.background.readableForeground, palette.caption, nil)
         case .gradient(let preset):
             let stops = preset.stops.map { SocialPostPalette.RGB(red: $0.red, green: $0.green, blue: $0.blue) }
             // The shared presets add white highlights, so consider white if the
@@ -55,12 +59,12 @@ nonisolated struct SocialPostAppearance: Sendable {
             let backgrounds = stops + ((preset.highlights ?? []).isEmpty ? [] : [.white])
             for foreground in [SocialPostPalette.RGB.black, .white] where
                 backgrounds.allSatisfy({ foreground.contrast(against: $0) >= 4.5 }) {
-                return (foreground.cgColor, foreground.cgColor, nil)
+                return (foreground, foreground, nil)
             }
             fallthrough
         case .image, .transparent:
             let neutral = SocialPostPalette.default
-            return (neutral.background.readableForeground.cgColor, neutral.caption.cgColor, neutral.background.cgColor)
+            return (neutral.background.readableForeground, neutral.caption, neutral.background)
         }
     }
 
@@ -76,6 +80,7 @@ nonisolated struct SocialPostAppearance: Sendable {
         let padding: CGFloat
         let spacing: CGFloat
         let screenshot: CompositionScreenshotStyle?
+        let typography: SocialPostTypography?
 
         init(_ appearance: SocialPostAppearance) throws {
             switch appearance.background {
@@ -87,11 +92,13 @@ nonisolated struct SocialPostAppearance: Sendable {
             padding = appearance.padding
             spacing = appearance.spacing
             screenshot = appearance.screenshot
+            typography = appearance.typography == .default ? nil : appearance.typography
         }
 
         func load() throws -> SocialPostAppearance {
             guard SocialPostAppearance.paddingRange.contains(padding),
-                  SocialPostAppearance.spacingRange.contains(spacing), screenshot?.isValid != false
+                  SocialPostAppearance.spacingRange.contains(spacing), screenshot?.isValid != false,
+                  typography?.isValid != false
             else { throw FeatureAnnouncementProject.ProjectError.invalid }
             let resolved: SocialPostAppearance.Background
             switch background {
@@ -110,7 +117,8 @@ nonisolated struct SocialPostAppearance: Sendable {
                 resolved = .image(try FeatureAnnouncementProject.decodePNG(png,
                     pixelLimit: SocialPostAppearance.wallpaperMaxEdge * SocialPostAppearance.wallpaperMaxEdge))
             }
-            return SocialPostAppearance(background: resolved, padding: padding, spacing: spacing, screenshot: screenshot)
+            return SocialPostAppearance(background: resolved, padding: padding, spacing: spacing,
+                                        screenshot: screenshot, typography: typography ?? .default)
         }
     }
 }

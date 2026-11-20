@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Style social post headlines and captions separately with typeface, weight, size, alignment, letter spacing, and colour.
 - Style social posts with shared gradients, image or transparent backgrounds, padding, spacing, rounded screenshot corners, and adjustable drop shadows.
 - Save reusable brand styles for social posts, including the background colour, callout accent, and logo.
 - Choose Headline Above, Screenshot First, or Side by Side for a social post, with balanced headlines and support for manual line breaks.

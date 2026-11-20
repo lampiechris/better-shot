@@ -264,6 +264,7 @@ struct ScreenshotCompositionWindow: View {
     @State private var gestureFrame: CGRect?
     @State private var announcementFormat: FeatureAnnouncement.Format = .square
     @State private var phonePreview = false
+    @State private var typographyRole: SocialPostTypography.Role = .headline
     @State private var showSaveBrandStyle = false
     @State private var brandStyleName = ""
     @State private var brandStyleSaveError: String?
@@ -392,6 +393,10 @@ struct ScreenshotCompositionWindow: View {
                         Text("Caption (optional)").font(.callout)
                         TextField("Caption", text: announcementText(\.caption, maximum: FeatureAnnouncement.captionLimit), axis: .vertical)
                             .textFieldStyle(.roundedBorder).lineLimit(2...4)
+                            .help("Press Option-Return to insert a line break.")
+                    }
+                    DisclosureGroup("Typography") {
+                        typographyControls
                     }
                 }
                 section("Brand Style") {
@@ -423,6 +428,58 @@ struct ScreenshotCompositionWindow: View {
         }
         .scrollIndicators(.hidden)
         .background(EditorChrome.panel)
+    }
+
+    private var typographyControls: some View {
+        let role = typographyRole
+        let defaultStyle = SocialPostTypography.default[role]
+        let usesColumns = model.document.announcement?.arrangement == .sideBySide
+            && !model.document.screenshots.isEmpty
+        let style = Binding(get: { model.document.announcement?.appearance.typography[role] ?? defaultStyle },
+                            set: { value in model.change { $0.announcement?.appearance.typography[role] = value } })
+        let automaticColour = model.document.announcement.map { post in
+            let colours = post.appearance.textColours(palette: post.palette)
+            return role == .headline ? colours.headline : colours.caption
+        } ?? .white
+        return VStack(alignment: .leading, spacing: 8) {
+            Picker("Text", selection: $typographyRole) {
+                ForEach(SocialPostTypography.Role.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Typeface", selection: style.typeface) {
+                    ForEach(SocialPostTypography.Typeface.allCases) { Text($0.rawValue).tag($0) }
+                }
+                Picker("Weight", selection: style.weight) {
+                    ForEach(SocialPostTypography.Weight.allCases) { Text($0.rawValue).tag($0) }
+                }
+                Picker("Alignment", selection: style.alignment) {
+                    ForEach(SocialPostTypography.Alignment.allCases) { Text($0.rawValue).tag($0) }
+                }
+                valueSlider("Max Size", value: Binding(
+                    get: { style.wrappedValue.maxSize ?? role.defaultSize(inColumns: usesColumns) },
+                    set: { style.maxSize.wrappedValue = $0 }
+                ), range: role.sizeRange)
+                .help("BetterShot fits the text within the layout up to this size.")
+                valueSlider("Letter Spacing", value: style.tracking, range: SocialPostTypography.trackingRange)
+                Toggle("Automatic Colour", isOn: Binding(
+                    get: { style.wrappedValue.colour == nil },
+                    set: { style.colour.wrappedValue = $0 ? nil : automaticColour }
+                ))
+                .toggleStyle(.checkbox)
+                if style.wrappedValue.colour != nil {
+                    ColorPicker("Text Colour", selection: colourPickerValue(Binding(
+                        get: { style.wrappedValue.colour ?? automaticColour },
+                        set: { style.colour.wrappedValue = $0 }
+                    )), supportsOpacity: false)
+                }
+                Button("Reset \(role.rawValue) Style") { style.wrappedValue = defaultStyle }
+                    .disabled(style.wrappedValue == defaultStyle)
+            }
+            .id(role)
+        }
+        .padding(.top, 6)
     }
 
     private var brandStyleMenu: some View {
@@ -475,15 +532,24 @@ struct ScreenshotCompositionWindow: View {
     }
 
     private func brandColor(_ key: WritableKeyPath<SocialPostPalette, SocialPostPalette.RGB>) -> Binding<Color> {
+        colourPickerValue(Binding(
+            get: { (model.document.announcement?.palette ?? .default)[keyPath: key] },
+            set: { rgb in
+                guard model.document.announcement?.palette[keyPath: key] != rgb else { return }
+                model.change { $0.announcement?.palette[keyPath: key] = rgb }
+            }
+        ))
+    }
+
+    private func colourPickerValue(_ value: Binding<SocialPostPalette.RGB>) -> Binding<Color> {
         Binding {
-            let color = (model.document.announcement?.palette ?? .default)[keyPath: key]
+            let color = value.wrappedValue
             return Color(.sRGB, red: color.red, green: color.green, blue: color.blue)
         } set: { selection in
             guard let color = NSColor(selection).usingColorSpace(.sRGB) else { return }
             let rgb = SocialPostPalette.RGB(red: min(1, max(0, color.redComponent)),
                 green: min(1, max(0, color.greenComponent)), blue: min(1, max(0, color.blueComponent)))
-            guard rgb.isValid, model.document.announcement?.palette[keyPath: key] != rgb else { return }
-            model.change { $0.announcement?.palette[keyPath: key] = rgb }
+            if rgb.isValid && value.wrappedValue != rgb { value.wrappedValue = rgb }
         }
     }
 

@@ -289,6 +289,8 @@ PNG export on the same text contrast and callout colour calculations.
 Both composers share the background and screenshot-style controls, background
 preset artwork, and screenshot shadow renderer. Social Post stores its background
 artwork and framing in the post and in saved brand styles.
+Headline and caption typography is stored with the appearance, independent of
+copy. Core Text resolves typography for preview and both PNG sizes.
 
 Image annotations use source-pixel coordinates. `AnnoShapeDrawing` is shared by
 the canvas and export; `AnnotationImageTransform` handles full-resolution rotation
