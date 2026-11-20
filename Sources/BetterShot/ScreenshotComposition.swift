@@ -14,6 +14,15 @@ struct CompositionScreenshot: Identifiable {
     var cornerRadius: CGFloat
     var shadow: CGFloat
     var shadowStyle: AnnotationShadowStyle = .soft
+
+    var style: CompositionScreenshotStyle {
+        get { CompositionScreenshotStyle(cornerRadius: cornerRadius, shadow: shadow, shadowStyle: shadowStyle) }
+        set {
+            cornerRadius = newValue.cornerRadius
+            shadow = newValue.shadow
+            shadowStyle = newValue.shadowStyle
+        }
+    }
 }
 
 enum ScreenshotCompositionLayout: String, CaseIterable, Identifiable {
@@ -233,13 +242,32 @@ final class ScreenshotCompositionModel {
         errorMessage = nil
     }
 
+    func importPostWallpaper(_ url: URL) {
+        guard document.announcement != nil else { return }
+        guard let image = Self.decodeImage(url, pixelLimit: 64_000_000, maxEdge: SocialPostAppearance.wallpaperMaxEdge) else {
+            errorMessage = "Could not read the background image. Choose a supported image up to 64 megapixels."
+            return
+        }
+        change { $0.announcement?.appearance.background = .image(image) }
+        errorMessage = nil
+    }
+
+    var postScreenshotStyle: CompositionScreenshotStyle {
+        document.announcement?.appearance.screenshot ?? selection?.style ??
+            CompositionScreenshotStyle(cornerRadius: defaultLook.cornerRadius, shadow: defaultLook.shadow,
+                                       shadowStyle: defaultLook.shadowStyle)
+    }
+
     func applyBrandStyle(_ style: SocialPostBrandStyleStore.Style) {
         guard document.announcement != nil else { return }
         do {
             let logo = try style.loadLogo()
+            let appearance = try style.appearance?.load()
             change {
                 $0.announcement?.palette = style.palette
                 $0.announcement?.logo = logo
+                if let appearance { $0.announcement?.appearance = appearance }
+                else { $0.announcement?.appearance.background = .solid }
             }
             errorMessage = nil
         } catch {
@@ -321,8 +349,7 @@ nonisolated enum ScreenshotCompositionRenderer {
         context.scaleBy(x: scale, y: scale)
         let canvas = CGRect(origin: .zero, size: canvasSize)
         if let announcement {
-            context.setFillColor(announcement.palette.background.cgColor)
-            context.fill(canvas)
+            announcement.appearance.drawBackground(palette: announcement.palette, in: canvas, context: context)
         } else {
             AnnotationBackgroundRenderer.drawBackground(document.background, in: canvas, context: context)
         }
@@ -341,10 +368,11 @@ nonisolated enum ScreenshotCompositionRenderer {
             let rect = CGRect(x: (frame.minX * scale).rounded() / scale,
                               y: (size.height - (frame.maxY * scale).rounded()) / scale,
                               width: pixelWidth / scale, height: pixelHeight / scale)
-            let radius = min(rect.width, rect.height) * item.cornerRadius
+            let style = announcement?.appearance.screenshot ?? item.style
+            let radius = min(rect.width, rect.height) * style.cornerRadius
             let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
-            AnnotationBackgroundRenderer.drawShadow(path: path, knockoutPath: path, strength: item.shadow,
-                                                    style: item.shadowStyle, context: context,
+            AnnotationBackgroundRenderer.drawShadow(path: path, knockoutPath: path, strength: style.shadow,
+                                                    style: style.shadowStyle, context: context,
                                                     outputScale: post == nil ? 1 : scale)
             context.saveGState()
             context.addPath(path); context.clip()

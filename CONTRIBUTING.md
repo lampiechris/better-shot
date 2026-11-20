@@ -286,6 +286,9 @@ type in `Resources/Info.plist` routes Finder opens through `BetterShotDelegate`.
 Social Post stores opaque sRGB colours and the logo in the project. Applying a
 brand style copies the values from `SocialPostBrandStyleStore`. Keep preview and
 PNG export on the same text contrast and callout colour calculations.
+Both composers share the background and screenshot-style controls, background
+preset artwork, and screenshot shadow renderer. Social Post stores its background
+artwork and framing in the post and in saved brand styles.
 
 Image annotations use source-pixel coordinates. `AnnoShapeDrawing` is shared by
 the canvas and export; `AnnotationImageTransform` handles full-resolution rotation

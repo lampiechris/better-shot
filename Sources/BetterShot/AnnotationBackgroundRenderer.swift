@@ -332,12 +332,18 @@ nonisolated enum AnnotationBackgroundRenderer {
             drawMissingWallpaperFallback(in: rect, context: context)
             return
         }
+        drawWallpaper(image, in: rect, context: context)
+    }
 
+    static func drawWallpaper(_ image: CGImage, in rect: CGRect, context: CGContext) {
+        context.saveGState()
+        context.clip(to: rect)
         context.interpolationQuality = .high
         context.draw(image, in: aspectFillRect(
             imageSize: CGSize(width: image.width, height: image.height),
             fillRect: rect
         ))
+        context.restoreGState()
     }
 
     private static func loadCGImageForAspectFill(at url: URL, fillSize: CGSize) -> CGImage? {

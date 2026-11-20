@@ -42,6 +42,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
     var callout: CGRect?
     var arrangement: Arrangement = .headlineAbove
     var palette: SocialPostPalette = .default
+    var appearance = SocialPostAppearance()
 
     // Source coordinates are normalized with the origin at the top left.
     static let defaultCallout = CGRect(x: 0.375, y: 0.375, width: 0.25, height: 0.25)
@@ -59,8 +60,11 @@ nonisolated struct FeatureAnnouncement: Sendable {
     }
 
     var hasHeadline: Bool { !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var hasCopy: Bool {
+        hasHeadline || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || logo != nil
+    }
     var hasContent: Bool {
-        hasHeadline || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || logo != nil || palette != .default
+        hasCopy || palette != .default || !appearance.isDefault
     }
 
     struct Layout {
@@ -71,10 +75,17 @@ nonisolated struct FeatureAnnouncement: Sendable {
         let caption: CTFrame?
         let media: MediaLayout?
         let copyOffset: CGFloat
+        let copyBacking: CGRect?
+        let backingColour: CGColor?
 
         func draw(in context: CGContext, logo: CGImage?) {
             context.saveGState()
             context.translateBy(x: 0, y: copyOffset)
+            if let copyBacking, let backingColour {
+                context.setFillColor(backingColour)
+                context.addPath(CGPath(roundedRect: copyBacking, cornerWidth: 18, cornerHeight: 18, transform: nil))
+                context.fillPath()
+            }
             if let logo, let logoRect { context.draw(logo, in: logoRect) }
             context.textMatrix = .identity
             if let headline { CTFrameDraw(headline, context) }
@@ -148,7 +159,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
             return MediaLayout(screenshotRect: full, insetAboveScreenshot: max(0, area.maxY - full.maxY), detail: nil)
         }
 
-        let gap: CGFloat = 32
+        let gap = appearance.spacing * (2.0 / 3.0)
         let rim: CGFloat = 8
         let detailLimit = CGRect(x: 0, y: 0, width: area.width * 0.75 - rim * 2,
                                  height: area.height * 0.40 - rim * 2)
@@ -177,25 +188,29 @@ nonisolated struct FeatureAnnouncement: Sendable {
 
     func layout(for format: Format, screenshot: CGImage? = nil) -> Layout {
         let size = format.size
-        let margin: CGFloat = 72
+        let margin = appearance.padding
         let bounds = CGRect(origin: .zero, size: size).insetBy(dx: margin, dy: margin)
-        let columns = arrangement == .sideBySide && hasContent && screenshot != nil
+        let columns = arrangement == .sideBySide && hasCopy && screenshot != nil
         let width: CGFloat = columns ? (format == .square ? 390 : 416) : bounds.width
         var top = bounds.maxY
         let logoRect = logo.map {
             Self.fit($0, in: CGRect(x: margin, y: top - 76, width: 260, height: 76), centered: false)
         }
         if let logoRect { top = logoRect.minY - 28 }
+        let colours = appearance.textColours(palette: palette)
         let title = Self.textFrame(headline, size: columns ? 62 : 76, maxHeight: columns ? 300 : 190, bold: true,
-                                   x: margin, top: top, width: width, color: palette.background.readableForeground.cgColor)
+                                   x: margin, top: top, width: width, color: colours.headline)
         if let title { top -= title.height + 16 }
         let subtitle = Self.textFrame(caption, size: columns ? 32 : 37, maxHeight: columns ? 166 : 110, bold: false,
-                                      x: margin, top: top, width: width, color: palette.caption.cgColor)
+                                      x: margin, top: top, width: width, color: colours.caption)
         let copyBottom = if let subtitle { top - subtitle.height }
             else if title != nil { top + 16 }
             else { logoRect?.minY ?? top }
         let copyHeight = bounds.maxY - copyBottom
-        let gap: CGFloat = copyHeight > 0 ? 48 : 0
+        let copyBacking = colours.backing != nil && (title != nil || subtitle != nil)
+            ? CGRect(x: margin, y: copyBottom, width: width, height: copyHeight).insetBy(dx: -14, dy: -12)
+            : nil
+        let gap: CGFloat = copyHeight > 0 ? max(appearance.spacing, copyBacking == nil ? 0 : 18) : 0
         let screenshotFirst = arrangement == .screenshotFirst && screenshot != nil
         let screenshotArea: CGRect
         if columns {
@@ -215,7 +230,8 @@ nonisolated struct FeatureAnnouncement: Sendable {
             copyOffset = -(media?.insetAboveScreenshot ?? 0)
         }
         return Layout(size: size, screenshotArea: screenshotArea, logoRect: logoRect,
-                      headline: title?.frame, caption: subtitle?.frame, media: media, copyOffset: copyOffset)
+                      headline: title?.frame, caption: subtitle?.frame, media: media, copyOffset: copyOffset,
+                      copyBacking: copyBacking, backingColour: colours.backing)
     }
 
     static func fit(_ image: CGImage, in bounds: CGRect, centered: Bool = true) -> CGRect {

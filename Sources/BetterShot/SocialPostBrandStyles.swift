@@ -69,6 +69,7 @@ final class SocialPostBrandStyleStore {
         let name: String
         let palette: SocialPostPalette
         let logoPNG: Data?
+        let appearance: SocialPostAppearance.Stored?
 
         func loadLogo() throws -> CGImage? {
             try logoPNG.map { try FeatureAnnouncementProject.decodePNG($0, pixelLimit: FeatureAnnouncement.logoPixelLimit) }
@@ -112,14 +113,15 @@ final class SocialPostBrandStyleStore {
         }
     }
 
-    func save(name: String, palette: SocialPostPalette, logo: CGImage?) throws {
+    func save(name: String, palette: SocialPostPalette, logo: CGImage?, appearance: SocialPostAppearance? = nil) throws {
         let name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(48))
         guard !name.isEmpty else { throw StyleError.invalidName }
         guard !styles.contains(where: { $0.name.localizedCaseInsensitiveCompare(name) == .orderedSame }) else {
             throw StyleError.duplicateName
         }
         let style = Style(id: UUID(), name: name, palette: palette,
-                          logoPNG: try logo.map(FeatureAnnouncementProject.encodePNG))
+                          logoPNG: try logo.map(FeatureAnnouncementProject.encodePNG),
+                          appearance: try appearance.map(SocialPostAppearance.Stored.init))
         try persist(styles + [style])
     }
 

@@ -29,6 +29,7 @@ nonisolated enum FeatureAnnouncementProject {
         var screenshot: Screenshot?
         var arrangement: FeatureAnnouncement.Arrangement?
         var palette: SocialPostPalette?
+        var appearance: SocialPostAppearance.Stored?
     }
 
     private struct Screenshot: Codable {
@@ -54,13 +55,15 @@ nonisolated enum FeatureAnnouncementProject {
     static func write(_ document: ScreenshotComposition, to url: URL) throws {
         guard let post = document.announcement else { throw ProjectError.invalid }
         let screenshot = try document.screenshots.first.map {
-            Screenshot(name: $0.name, png: try encodePNG($0.image), cornerRadius: $0.cornerRadius,
-                       shadow: $0.shadow, shadowStyle: $0.shadowStyle.rawValue)
+            let style = post.appearance.screenshot ?? $0.style
+            return Screenshot(name: $0.name, png: try encodePNG($0.image), cornerRadius: style.cornerRadius,
+                              shadow: style.shadow, shadowStyle: style.shadowStyle.rawValue)
         }
         let contents = FileContents(headline: post.headline, caption: post.caption,
             logoPNG: try post.logo.map(encodePNG), callout: post.callout, screenshot: screenshot,
             arrangement: post.arrangement == .headlineAbove ? nil : post.arrangement,
-            palette: post.palette == .default ? nil : post.palette)
+            palette: post.palette == .default ? nil : post.palette,
+            appearance: post.appearance.isDefault ? nil : try SocialPostAppearance.Stored(post.appearance))
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         let data = try encoder.encode(contents)
@@ -87,7 +90,7 @@ nonisolated enum FeatureAnnouncementProject {
         let announcement = FeatureAnnouncement(headline: contents.headline, caption: contents.caption,
             logo: try contents.logoPNG.map { try decodePNG($0, pixelLimit: FeatureAnnouncement.logoPixelLimit) },
             callout: contents.callout, arrangement: contents.arrangement ?? .headlineAbove,
-            palette: contents.palette ?? .default)
+            palette: contents.palette ?? .default, appearance: try contents.appearance?.load() ?? SocialPostAppearance())
         if let rect = contents.callout {
             // Tolerate normal floating-point roundoff at the selection edges.
             let epsilon: CGFloat = 0.000_001

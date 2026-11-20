@@ -104,6 +104,7 @@
 		63F5197C8B2ED02C4C97864E /* FeatureAnnouncementProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B9F10F5BB2DA403FAE6F77 /* FeatureAnnouncementProject.swift */; };
 		65B99E86B5CF68B181BA2015 /* FrozenScreenFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87A9F3B02F89B32726FC039 /* FrozenScreenFrame.swift */; };
 		6682480DF2FDA028736D23D2 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9822447B9DE8F15B9CC94381 /* PreferencesView.swift */; };
+		6B6FCA49E49813CF3A1E26D2 /* SocialPostAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = A959EC8AE717D558CDB896D9 /* SocialPostAppearance.swift */; };
 		6E19D91F47B4566546BF95C7 /* AnnotationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35712AC357C535000CF633D8 /* AnnotationInspector.swift */; };
 		6E21C6975713C6FDBB95AF4C /* AnnoCanvasLayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B9B3F0836AF531CFB09F8C /* AnnoCanvasLayerView.swift */; };
 		6EE4DDA9308DBD7BDF01C954 /* SilenceDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0837CDA77E08CBA5E8D80F3B /* SilenceDetector.swift */; };
@@ -394,6 +395,7 @@
 		A700AB85604C73318DAF5692 /* Licenses */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Licenses; path = Resources/Licenses; sourceTree = SOURCE_ROOT; };
 		A8FAC6D4EA9409CD20552C2B /* TeleprompterScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeleprompterScript.swift; sourceTree = "<group>"; };
 		A90D9D546D273A16464FD16B /* CaptureCountdownPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureCountdownPresenter.swift; sourceTree = "<group>"; };
+		A959EC8AE717D558CDB896D9 /* SocialPostAppearance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialPostAppearance.swift; sourceTree = "<group>"; };
 		A9AE3D9E0B57D78980112DD4 /* AnnotationDocument.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationDocument.swift; sourceTree = "<group>"; };
 		A9FD147E96AE29FF1E11357F /* Backgrounds */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Backgrounds; path = Resources/Backgrounds; sourceTree = SOURCE_ROOT; };
 		ADD96168EC491E4A46366640 /* ColorGrade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorGrade.swift; sourceTree = "<group>"; };
@@ -732,6 +734,7 @@
 				C62E4421999FABC6B040B9CD /* ShapeRenderer.swift */,
 				748342A3B1322ED390C11DB4 /* Shapes2d.swift */,
 				F2DD10CB10250C7A3DEC3186 /* SmartRedactionRecognizer.swift */,
+				A959EC8AE717D558CDB896D9 /* SocialPostAppearance.swift */,
 				9322CEB479234225261E457A /* SocialPostBrandStyles.swift */,
 				B3B649BF5B80698892056F6D /* StraightArrow.swift */,
 				7CF3030FEFF60A9E00ACF22C /* StrokeOptions.swift */,
@@ -1115,6 +1118,7 @@
 				8782829F9AD2E1BE2B796AC7 /* ShortcutService.swift in Sources */,
 				6EE4DDA9308DBD7BDF01C954 /* SilenceDetector.swift in Sources */,
 				40B553DB8E65CE93297F3D11 /* SmartRedactionRecognizer.swift in Sources */,
+				6B6FCA49E49813CF3A1E26D2 /* SocialPostAppearance.swift in Sources */,
 				3BAAA9C098FF277A41008526 /* SocialPostBrandStyles.swift in Sources */,
 				618723BB6B078CD0746D3345 /* StraightArrow.swift in Sources */,
 				9E706EC495738239096A37E8 /* StrokeOptions.swift in Sources */,

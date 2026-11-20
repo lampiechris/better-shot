@@ -301,7 +301,9 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     let defaultPost = try FeatureAnnouncementProject.read(from: postURL)
     precondition(defaultPost.announcement.arrangement == .headlineAbove, "Posts without a layout field use Headline Above")
     precondition(defaultPost.announcement.palette == .default, "Posts without a palette use the original colours")
+    precondition(defaultPost.announcement.appearance.isDefault)
     try checkBrandStyles(model, directory: directory)
+    try checkSocialPostAppearance(model, replacement: replacement, directory: directory)
     model.change { $0.announcement?.arrangement = .screenshotFirst }
     model.calloutDraft = selection.offsetBy(dx: 0.02, dy: 0.01)
     model.applyCalloutDraft()
@@ -357,6 +359,71 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
     print("PASS Social Post layouts, callouts, paired exports, brand styles, lossless project round trip, and independent copies")
+}
+
+@MainActor
+private func checkSocialPostAppearance(_ model: ScreenshotCompositionModel, replacement: URL, directory: URL) throws {
+    let style = CompositionScreenshotStyle(cornerRadius: 0.2, shadow: 0.65, shadowStyle: .long)
+    let gradient = GradientPreset.presets[1]
+    var styled = model.document
+    styled.announcement?.callout = nil
+    styled.announcement?.appearance = SocialPostAppearance(background: .gradient(gradient), padding: 114, spacing: 60,
+                                                            screenshot: style)
+    let post = styled.announcement!
+    let square = post.layout(for: .square, screenshot: styled.screenshots[0].image)
+    precondition(square.screenshotArea.minX == 114 && square.copyBacking == nil)
+    let exports = try ScreenshotCompositionRenderer.exportAnnouncement(styled, to: directory)
+    for format in FeatureAnnouncement.Format.allCases {
+        let image = NSBitmapImageRep(data: try Data(contentsOf: exports.appendingPathComponent("Social Post \(format.fileSuffix).png")))!
+        let top = image.colorAt(x: 10, y: 10)!
+        let bottom = image.colorAt(x: 10, y: image.pixelsHigh - 11)!
+        precondition(top.alphaComponent == 1 && bottom.alphaComponent == 1 && abs(top.blueComponent - bottom.blueComponent) > 0.08,
+                     "Both formats use the shared gradient")
+    }
+
+    var transparent = styled
+    transparent.announcement?.appearance.background = .transparent
+    transparent.announcement?.appearance.screenshot = CompositionScreenshotStyle(cornerRadius: 0, shadow: 0, shadowStyle: .soft)
+    let layout = transparent.announcement!.layout(for: .square, screenshot: transparent.screenshots[0].image)
+    let rendered = try ScreenshotCompositionRenderer.render(transparent, scale: 1)
+    let flat = NSBitmapImageRep(cgImage: rendered)
+    let rect = layout.media!.screenshotRect
+    let corner = CGPoint(x: rect.minX + 3, y: layout.size.height - rect.maxY + 3)
+    let shadow = CGPoint(x: rect.midX, y: layout.size.height - rect.minY + 10)
+    precondition(flat.colorAt(x: 10, y: 10)!.alphaComponent == 0 && layout.copyBacking != nil)
+    precondition(flat.colorAt(x: Int(corner.x), y: Int(corner.y))!.alphaComponent == 1)
+    precondition(flat.colorAt(x: Int(shadow.x), y: Int(shadow.y))!.alphaComponent == 0)
+
+    transparent.announcement?.appearance.screenshot?.cornerRadius = style.cornerRadius
+    let rounded = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(transparent, scale: 1))
+    precondition(rounded.colorAt(x: Int(corner.x), y: Int(corner.y))!.alphaComponent == 0, "Corners must clip in export")
+    transparent.announcement?.appearance.screenshot = style
+    let shadowed = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(transparent, scale: 1))
+    precondition(shadowed.colorAt(x: Int(shadow.x), y: Int(shadow.y))!.alphaComponent > 0.02, "Shadow must render in export")
+
+    let library = directory.appendingPathComponent("Full Styles.plist")
+    let store = SocialPostBrandStyleStore(url: library)
+    try store.save(name: "Peach", palette: post.palette, logo: post.logo, appearance: post.appearance)
+    let test = ScreenshotCompositionModel(defaultLook: AnnotationBackgroundSettings(), isAnnouncement: true)
+    let preset = SocialPostBrandStyleStore(url: library).styles[0]
+    test.applyBrandStyle(preset)
+    test.importImages([replacement])
+    precondition(test.postScreenshotStyle == style, "Apply framing before importing the screenshot")
+    let loadedAppearance = test.document.announcement!.appearance
+    guard case .gradient(let loadedGradient) = loadedAppearance.background else { preconditionFailure() }
+    precondition(loadedGradient == gradient && loadedAppearance.padding == 114 && loadedAppearance.spacing == 60)
+    let wallpaper = directory.appendingPathComponent("Backdrop.png")
+    try FileManager.default.copyItem(at: replacement, to: wallpaper)
+    test.importPostWallpaper(wallpaper)
+    let project = directory.appendingPathComponent("Image Background.bettershotpost")
+    try FeatureAnnouncementProject.write(test.document, to: project)
+    try FileManager.default.removeItem(at: wallpaper)
+    let reopened = try FeatureAnnouncementProject.read(from: project)
+    guard case .image(let background) = reopened.announcement.appearance.background else { preconditionFailure() }
+    precondition(background.width > 0 && reopened.announcement.appearance.screenshot == style)
+    let reopenedImage = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(reopened.makeDocument(), scale: 1))
+    precondition(reopenedImage.colorAt(x: 5, y: 5)!.blueComponent > 0.9,
+                 "The reopened project draws its embedded background image")
 }
 
 @MainActor

@@ -50,20 +50,22 @@ baked-in shadow, allowing the per-image shadow to remain adjustable.
 ### Save and reuse a post
 
 - Choose **Post → Save Post** or press **⌘S** to save a `.bettershotpost` file.
-  It contains the layout, screenshot, text, brand colours, logo, and callout.
+  It contains the layout, screenshot, text, background, framing, logo, and callout.
 - Double-click a saved post in Finder or choose **Post → Open Post…** in either composer.
 - Choose **Post → Duplicate Post** to open an independent copy, then save it under its own name.
   Replacing the screenshot clears its callout and keeps the text and logo.
 
 ### Brand styles
 
-Choose **Background** and **Accent** under **Brand Style** and add a logo if you
-want one. BetterShot chooses contrasting headline and caption colours. The
-accent is used for the callout outline and frame.
+Choose **Color**, **Gradient**, **Image**, or **Transparent** under **Brand Style → Background**.
+Gradients use the same presets as Compose Screenshots. BetterShot picks contrasting
+text colours and adds a backing for text over images or transparency. The
+**Accent** colour is used for the callout outline and frame.
 
-Choose **Presets → Save Brand Style…** to name and reuse those colours and the
-logo across posts. Applying a preset is one undoable edit. A saved post carries
-its own copy of the style, including its logo.
+Use **Framing** to set padding, spacing, screenshot corners, and the amount and
+style of the screenshot shadow. Choose **Presets → Save Brand Style…** to reuse
+the background, accent, logo, and framing across posts. Applying a preset is one
+undoable edit. A saved post embeds any background image and logo.
 
 ## First-pass limits
 

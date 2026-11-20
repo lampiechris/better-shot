@@ -396,7 +396,7 @@ struct ScreenshotCompositionWindow: View {
                 }
                 section("Brand Style") {
                     brandStyleMenu
-                    ColorPicker("Background", selection: brandColor(\.background), supportsOpacity: false)
+                    backgroundControls
                     ColorPicker("Accent", selection: brandColor(\.accent), supportsOpacity: false)
                     if let logo = model.document.announcement?.logo {
                         Image(decorative: logo, scale: 1).resizable().scaledToFit().frame(height: 36)
@@ -407,6 +407,13 @@ struct ScreenshotCompositionWindow: View {
                             Button("Remove") { model.change { $0.announcement?.logo = nil } }
                         }
                     }
+                }
+                section("Framing") {
+                    valueSlider("Padding", value: postAppearanceValue(\.padding, default: 72),
+                                range: SocialPostAppearance.paddingRange)
+                    valueSlider("Spacing", value: postAppearanceValue(\.spacing, default: 48),
+                                range: SocialPostAppearance.spacingRange)
+                    screenshotStyleControls
                 }
                 if !model.document.screenshots.isEmpty {
                     section("Magnified Callout") { calloutControls }
@@ -431,9 +438,12 @@ struct ScreenshotCompositionWindow: View {
                 showSaveBrandStyle = true
             }
             Button("Reset Colours") {
-                model.change { $0.announcement?.palette = .default }
+                model.change {
+                    $0.announcement?.palette = .default
+                    $0.announcement?.appearance.background = .solid
+                }
             }
-            .disabled(model.document.announcement?.palette == .default)
+            .disabled(model.document.announcement?.palette == .default && backgroundKind == .solid)
             if !styles.isEmpty {
                 Menu("Delete Saved Style") {
                     ForEach(styles) { style in
@@ -480,7 +490,10 @@ struct ScreenshotCompositionWindow: View {
     private func saveBrandStyle() {
         guard let post = model.document.announcement else { return }
         do {
-            try SocialPostBrandStyleStore.shared.save(name: brandStyleName, palette: post.palette, logo: post.logo)
+            var appearance = post.appearance
+            appearance.screenshot = model.postScreenshotStyle
+            try SocialPostBrandStyleStore.shared.save(name: brandStyleName, palette: post.palette,
+                                                     logo: post.logo, appearance: appearance)
             model.errorMessage = nil
             showSaveBrandStyle = false
         } catch {
@@ -618,13 +631,7 @@ struct ScreenshotCompositionWindow: View {
                             let fitted = model.document.fittedFrame(frame)
                             model.updateSelected { $0.frame = fitted }
                         }), range: 20...max(20, model.document.contentRect.width))
-                        valueSlider("Corners", value: selectedValue(\.cornerRadius), range: 0...0.25, format: .percent())
-                        valueSlider("Shadow", value: selectedValue(\.shadow), range: 0...1, format: .percent())
-                        Picker("Shadow Style", selection: Binding(get: { model.selection?.shadowStyle ?? .soft }, set: { style in
-                            model.updateSelected { $0.shadowStyle = style }
-                        })) {
-                            ForEach(AnnotationShadowStyle.allCases) { Text($0.title).tag($0) }
-                        }
+                        screenshotStyleControls
                         HStack {
                             Button("Backward", systemImage: "square.2.layers.3d.bottom.filled") { model.moveSelection(by: -1) }
                                 .disabled(model.document.screenshots.first?.id == selected.id)
@@ -648,42 +655,118 @@ struct ScreenshotCompositionWindow: View {
         }
     }
 
+    private enum BackgroundKind: Hashable {
+        case transparent, solid, gradient, image
+    }
+
     private var backgroundControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("Background", selection: Binding(get: { backgroundKind }, set: { kind in
-                model.change {
-                    $0.background = kind == 0 ? .none : kind == 1 ? .solid(.graphite) : .gradient(AnnotationBackgroundGradient.presets[0])
-                }
-            })) {
-                Text("Transparent").tag(0)
-                Text("Color").tag(1)
-                Text("Gradient").tag(2)
-                if backgroundKind == 3 { Text("Default Wallpaper").tag(3) }
+            Picker("Background", selection: Binding(get: { backgroundKind }, set: setBackground)) {
+                Text("Transparent").tag(BackgroundKind.transparent)
+                Text("Color").tag(BackgroundKind.solid)
+                Text("Gradient").tag(BackgroundKind.gradient)
+                if isAnnouncement { Text("Image").tag(BackgroundKind.image) }
+                else if backgroundKind == .image { Text("Default Wallpaper").tag(BackgroundKind.image) }
             }
-            if case .solid(let color) = model.document.background {
+            if backgroundKind == .solid && isAnnouncement {
+                ColorPicker("Color", selection: brandColor(\.background), supportsOpacity: false)
+            } else if case .solid(let color) = model.document.background, !isAnnouncement {
                 ColorPicker("Color", selection: Binding(get: { color.color }, set: { color in
                     model.change { $0.background = .solid(.custom(from: color)) }
                 }), supportsOpacity: false)
             }
-            if case .gradient(let current) = model.document.background {
-                Picker("Gradient", selection: Binding(get: { current.id }, set: { id in
+            if backgroundKind == .gradient {
+                Picker("Gradient", selection: Binding(get: { backgroundGradientID }, set: { id in
                     if let preset = AnnotationBackgroundGradient.presets.first(where: { $0.id == id }) {
-                        model.change { $0.background = .gradient(preset) }
+                        model.change { document in
+                            if let gradient = preset.preset, document.announcement != nil {
+                                document.announcement?.appearance.background = .gradient(gradient)
+                            } else {
+                                document.background = .gradient(preset)
+                            }
+                        }
                     }
                 })) {
                     ForEach(AnnotationBackgroundGradient.presets) { Text($0.title).tag($0.id) }
                 }
             }
+            if isAnnouncement && backgroundKind == .image {
+                Button("Replace Background Image…", action: importPostBackground)
+            }
         }
     }
 
-    private var backgroundKind: Int {
-        switch model.document.background {
-        case .none: 0
-        case .solid: 1
-        case .gradient: 2
-        case .customWallpaper: 3
+    private var backgroundKind: BackgroundKind {
+        if let appearance = model.document.announcement?.appearance {
+            switch appearance.background {
+            case .transparent: return .transparent
+            case .solid: return .solid
+            case .gradient: return .gradient
+            case .image: return .image
+            }
         }
+        switch model.document.background {
+        case .none: return .transparent
+        case .solid: return .solid
+        case .gradient: return .gradient
+        case .customWallpaper: return .image
+        }
+    }
+
+    private var backgroundGradientID: String {
+        if case .gradient(let gradient) = model.document.announcement?.appearance.background { return gradient.id }
+        if case .gradient(let gradient) = model.document.background { return gradient.id }
+        return ""
+    }
+
+    private func setBackground(_ kind: BackgroundKind) {
+        guard kind != backgroundKind else { return }
+        if isAnnouncement {
+            if kind == .image {
+                importPostBackground()
+            } else {
+                model.change {
+                    switch kind {
+                    case .transparent: $0.announcement?.appearance.background = .transparent
+                    case .solid: $0.announcement?.appearance.background = .solid
+                    case .gradient: $0.announcement?.appearance.background = .gradient(GradientPreset.presets[0])
+                    case .image: break
+                    }
+                }
+            }
+        } else {
+            model.change {
+                switch kind {
+                case .transparent: $0.background = .none
+                case .solid: $0.background = .solid(.graphite)
+                case .gradient: $0.background = .gradient(AnnotationBackgroundGradient.presets[0])
+                case .image: break
+                }
+            }
+        }
+    }
+
+    private var screenshotStyleControls: some View {
+        let style = Binding(get: { model.postScreenshotStyle }, set: { style in
+            if isAnnouncement {
+                model.change { $0.announcement?.appearance.screenshot = style }
+            } else {
+                model.updateSelected { $0.style = style }
+            }
+        })
+        return VStack(alignment: .leading, spacing: 8) {
+            valueSlider("Corners", value: style.cornerRadius, range: 0...0.25, format: .percent())
+            valueSlider("Shadow", value: style.shadow, range: 0...1, format: .percent())
+            Picker("Shadow Style", selection: style.shadowStyle) {
+                ForEach(AnnotationShadowStyle.allCases) { Text($0.title).tag($0) }
+            }
+        }
+    }
+
+    private func postAppearanceValue(_ key: WritableKeyPath<SocialPostAppearance, CGFloat>,
+                                     default fallback: CGFloat) -> Binding<CGFloat> {
+        Binding(get: { model.document.announcement?.appearance[keyPath: key] ?? fallback },
+                set: { value in model.change { $0.announcement?.appearance[keyPath: key] = value } })
     }
 
     private func valueSlider(_ title: String, value: Binding<CGFloat>, range: ClosedRange<CGFloat>,
@@ -700,10 +783,6 @@ struct ScreenshotCompositionWindow: View {
                 for index in doc.screenshots.indices { doc.screenshots[index].frame = doc.fittedFrame(doc.screenshots[index].frame) }
             }
         })
-    }
-
-    private func selectedValue(_ key: WritableKeyPath<CompositionScreenshot, CGFloat>) -> Binding<CGFloat> {
-        Binding(get: { model.selection?[keyPath: key] ?? 0 }, set: { value in model.updateSelected { $0[keyPath: key] = value } })
     }
 
     private func frameValue(_ key: WritableKeyPath<CGRect, CGFloat>) -> Binding<CGFloat> {
@@ -864,13 +943,21 @@ struct ScreenshotCompositionWindow: View {
     }
 
     private func importLogo() {
+        pickPostImage(prompt: "Choose Logo", onPick: model.importAnnouncementLogo)
+    }
+
+    private func importPostBackground() {
+        pickPostImage(prompt: "Choose Background Image", onPick: model.importPostWallpaper)
+    }
+
+    private func pickPostImage(prompt: String, onPick: @escaping (URL) -> Void) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.image]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.prompt = "Choose Logo"
+        panel.prompt = prompt
         panel.begin { response in
-            if response == .OK, let url = panel.url { model.importAnnouncementLogo(url) }
+            if response == .OK, let url = panel.url { onPick(url) }
         }
     }
 
