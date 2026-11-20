@@ -81,6 +81,10 @@ final class ScreenshotCompositionModel {
     private(set) var document = ScreenshotComposition()
     var selectedID: UUID?
     var errorMessage: String?
+    var calloutDraft: CGRect?
+    private(set) var postURL: URL?
+    var isSavingPost = false
+    private var savedPostRevision: UUID?
     private var undoStack: [ScreenshotComposition] = []
     private var redoStack: [ScreenshotComposition] = []
     private var editing = false
@@ -108,6 +112,41 @@ final class ScreenshotCompositionModel {
 
     var canExportAnnouncement: Bool {
         !document.screenshots.isEmpty && document.announcement?.hasHeadline == true
+    }
+
+    var hasPostContent: Bool {
+        !document.screenshots.isEmpty || document.announcement?.hasContent == true
+    }
+
+    var hasUnsavedPostChanges: Bool {
+        guard document.announcement != nil else { return false }
+        return (postURL != nil || hasPostContent) && (document.revision != savedPostRevision
+            || (calloutDraft != nil && calloutDraft != document.announcement?.callout))
+    }
+
+    func loadPost(_ post: ScreenshotComposition, from url: URL?) {
+        document = post
+        document.revision = UUID()
+        postURL = url
+        savedPostRevision = url == nil ? nil : document.revision
+        calloutDraft = nil
+        selectedID = post.screenshots.first?.id
+        undoStack.removeAll()
+        redoStack.removeAll()
+        endEditing()
+    }
+
+    func markPostSaved(to url: URL, revision: UUID) {
+        postURL = url
+        savedPostRevision = revision
+    }
+
+    func applyCalloutDraft() {
+        guard let draft = calloutDraft else { return }
+        if document.announcement?.callout != draft {
+            change { $0.announcement?.callout = draft }
+        }
+        calloutDraft = nil
     }
 
     func beginEditing() { editing = true; recordedEdit = false }
@@ -175,6 +214,7 @@ final class ScreenshotCompositionModel {
                 shadowStyle: defaultLook.shadowStyle))
         }
         if !imported.isEmpty {
+            calloutDraft = nil
             change {
                 $0.screenshots = existing + imported
                 $0.announcement?.callout = nil
@@ -214,6 +254,7 @@ final class ScreenshotCompositionModel {
     }
 
     func removeSelection() {
+        calloutDraft = nil
         change {
             $0.screenshots.removeAll { $0.id == selectedID }
             $0.announcement?.callout = nil

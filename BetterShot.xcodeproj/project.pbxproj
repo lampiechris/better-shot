@@ -100,6 +100,7 @@
 		61BB1B90D49DA0006C882330 /* BetterShotPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3560130094EAB274FBD6EE6E /* BetterShotPreferences.swift */; };
 		61E7E40D2B4D4891ABCC8C98 /* AnnotationEditorWindow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293EA45B51DD6073E49641F4 /* AnnotationEditorWindow.swift */; };
 		63ECA013285D8804B1096228 /* OverlaySettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91594D79B3D54FA54835A1 /* OverlaySettingsTab.swift */; };
+		63F5197C8B2ED02C4C97864E /* FeatureAnnouncementProject.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B9F10F5BB2DA403FAE6F77 /* FeatureAnnouncementProject.swift */; };
 		65B99E86B5CF68B181BA2015 /* FrozenScreenFrame.swift in Sources */ = {isa = PBXBuildFile; fileRef = D87A9F3B02F89B32726FC039 /* FrozenScreenFrame.swift */; };
 		6682480DF2FDA028736D23D2 /* PreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9822447B9DE8F15B9CC94381 /* PreferencesView.swift */; };
 		6E19D91F47B4566546BF95C7 /* AnnotationInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35712AC357C535000CF633D8 /* AnnotationInspector.swift */; };
@@ -433,6 +434,7 @@
 		CFF906CEC52DCC55E1CAB388 /* TransparencyGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransparencyGrid.swift; sourceTree = "<group>"; };
 		D10A6B033CF2B257451A9159 /* RecordingControlPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingControlPresenter.swift; sourceTree = "<group>"; };
 		D373EFB76FA1254F635BB9A5 /* AnnoShapeDrawing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnoShapeDrawing.swift; sourceTree = "<group>"; };
+		D4B9F10F5BB2DA403FAE6F77 /* FeatureAnnouncementProject.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeatureAnnouncementProject.swift; sourceTree = "<group>"; };
 		D58300A37E3A994CE15987C5 /* BeautifierRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeautifierRenderer.swift; sourceTree = "<group>"; };
 		D87A9F3B02F89B32726FC039 /* FrozenScreenFrame.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrozenScreenFrame.swift; sourceTree = "<group>"; };
 		D9CAA6D017C7FB19CD3466D7 /* MathUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MathUtils.swift; sourceTree = "<group>"; };
@@ -650,6 +652,7 @@
 				CA1C53D4E064EC5B6570D913 /* EditorCloseGuard.swift */,
 				41B1FFF560349A356C312F34 /* FailureAlert.swift */,
 				73A9AAD4021ECB0AC3CB78FD /* FeatureAnnouncement.swift */,
+				D4B9F10F5BB2DA403FAE6F77 /* FeatureAnnouncementProject.swift */,
 				DAB3C2075FF2BEF2BC2650CB /* Geometry2d.swift */,
 				A077E702B85C092E049C33BA /* GeoPaths.swift */,
 				4B8D0D0530E6FE73B439B093 /* ImageTextRecognizer.swift */,
@@ -987,6 +990,7 @@
 				328ADEC511F4BFC1C5DBE414 /* EscapeKey.swift in Sources */,
 				D8AE5ACE0841050A49E7B483 /* FailureAlert.swift in Sources */,
 				34EA02143AF4CC541CC052FE /* FeatureAnnouncement.swift in Sources */,
+				63F5197C8B2ED02C4C97864E /* FeatureAnnouncementProject.swift in Sources */,
 				425C6E74CB9DE1912B5B974B /* FrozenScreenCapture.swift in Sources */,
 				65B99E86B5CF68B181BA2015 /* FrozenScreenFrame.swift in Sources */,
 				B0D43AF92D661FDC828C1399 /* GeoPaths.swift in Sources */,

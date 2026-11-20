@@ -6,6 +6,7 @@ import TipKit
 final class BetterShotDelegate: NSObject, NSApplicationDelegate {
     private var didFinishLaunching = false
     private var pendingURLActions: [CaptureURLAction] = []
+    private var pendingPostURLs: [URL] = []
 
     /// The notification delegate has to be in place before launch finishes,
     /// or the system handles clicks on export notifications itself and never
@@ -49,19 +50,25 @@ final class BetterShotDelegate: NSObject, NSApplicationDelegate {
             }
         }
         didFinishLaunching = true
-        performPendingURLActions()
+        performPendingOpenRequests()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         pendingURLActions.append(contentsOf: urls.compactMap(CaptureURLAction.init(url:)))
-        if didFinishLaunching { performPendingURLActions() }
+        pendingPostURLs.append(contentsOf: urls.filter {
+            $0.isFileURL && $0.pathExtension.lowercased() == FeatureAnnouncementProject.pathExtension
+        })
+        if didFinishLaunching { performPendingOpenRequests() }
     }
 
-    private func performPendingURLActions() {
+    private func performPendingOpenRequests() {
         let actions = pendingURLActions
         pendingURLActions.removeAll()
-        guard !actions.isEmpty else { return }
+        let posts = pendingPostURLs
+        pendingPostURLs.removeAll()
+        guard !actions.isEmpty || !posts.isEmpty else { return }
         let screen = ActiveDisplayResolver.activeScreen(preferPointer: true)
+        for url in posts { ScreenshotCompositionWindowController.openPost(url, on: screen) }
         Task {
             for action in actions {
                 switch action {
@@ -94,6 +101,7 @@ final class BetterShotDelegate: NSObject, NSApplicationDelegate {
     /// Quitting mid-recording finishes and saves the recording first, and
     /// Studio's debounced autosave is flushed so no edit is lost.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if ScreenshotCompositionWindowController.reviewUnsavedPostBeforeQuitting() { return .terminateCancel }
         StudioProjectRegistry.shared.flushDrafts()
         guard ScreenRecordingManager.shared.isActive else { return .terminateNow }
 

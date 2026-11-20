@@ -258,7 +258,7 @@ The multi-screenshot editor starts at `ScreenshotCompositionWindowController` an
 uses `ScreenshotCompositionModel` for source images, pixel coordinates, layer
 order, layouts, and grouped undo. `ScreenshotCompositionRenderer` draws both the
 fitted preview and full-resolution PNG with the shared background/shadow helpers.
-Composition state stays in memory; it must never overwrite General's Default Look
+Freeform composition state stays in memory; it must never overwrite General's Default Look
 or edit the imported files. `Tests/ScreenshotCompositionIntegration.swift` runs
 through `make test`, including actual rendered pixels and compact light/dark
 snapshots. `Tests/CompositionPreview.swift` is an optional native interaction
@@ -277,6 +277,11 @@ shared composition renderer. Callouts store normalized top-left screenshot
 coordinates so both ratios enlarge the same original pixels. Phone Size affects
 the preview scale only. Move the finished folder into place after both
 images have been written.
+
+`FeatureAnnouncementProject` saves posts atomically as versioned `.bettershotpost`
+files with embedded lossless PNGs. Keep the project save revision independent of
+PNG export, and open duplicate posts without a destination URL. The document
+type in `Resources/Info.plist` routes Finder opens through `BetterShotDelegate`.
 
 Image annotations use source-pixel coordinates. `AnnoShapeDrawing` is shared by
 the canvas and export; `AnnotationImageTransform` handles full-resolution rotation

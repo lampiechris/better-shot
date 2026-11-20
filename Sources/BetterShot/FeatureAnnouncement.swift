@@ -3,6 +3,8 @@ import CoreText
 import Foundation
 
 nonisolated struct FeatureAnnouncement: Sendable {
+    static let headlineLimit = 90
+    static let captionLimit = 160
     enum Format: String, CaseIterable, Identifiable, Sendable {
         case square = "1:1"
         case portrait = "4:5"

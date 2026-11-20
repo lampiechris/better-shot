@@ -6,11 +6,19 @@ import UniformTypeIdentifiers
 final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
     static let shared = ScreenshotCompositionWindowController()
     static let announcement = ScreenshotCompositionWindowController(isAnnouncement: true)
+    private static var additionalPosts: [UUID: ScreenshotCompositionWindowController] = [:]
+    private static var openingPosts: Set<URL> = []
+    private static var writingPosts: Set<URL> = []
+    private static var postWindows: [ScreenshotCompositionWindowController] { [announcement] + Array(additionalPosts.values) }
+    private let id = UUID()
     private let isAnnouncement: Bool
+    private var postCloseGuard: EditorCloseGuard?
     private var window: NSWindow?
     private var model: ScreenshotCompositionModel?
     private var exportBeforeClosing: (() -> Void)?
     private var captureTask: Task<Void, Never>?
+    private var saveTask: Task<Bool, Never>?
+    private var untitledPostName = "Feature Announcement"
 
     private init(isAnnouncement: Bool = false) {
         self.isAnnouncement = isAnnouncement
@@ -18,13 +26,22 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
     }
 
     func open(on screen: NSScreen? = nil, images: [URL] = []) {
+        if isAnnouncement && !images.isEmpty && (model?.hasPostContent == true || model?.postURL != nil) {
+            let draft = Self.newPostWindow()
+            draft.open(on: screen, images: images)
+            return
+        }
         if let window {
             if !images.isEmpty { model?.importImages(images) }
             window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
         }
         let model = ScreenshotCompositionModel(isAnnouncement: isAnnouncement)
-        self.model = model
         if !images.isEmpty { model.importImages(images) }
+        show(model, on: screen)
+    }
+
+    private func show(_ model: ScreenshotCompositionModel, on screen: NSScreen?) {
+        self.model = model
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1180, height: 780),
             styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
         window.title = isAnnouncement ? "Feature Announcement" : "Compose Screenshots"
@@ -33,12 +50,150 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
         window.delegate = self
         window.contentView = NSHostingView(rootView: ScreenshotCompositionWindow(model: model,
             onCaptureWindow: { [weak self] in self?.captureWindow() },
-            onExportAvailable: { [weak self] action in self?.exportBeforeClosing = action }))
+            onExportAvailable: { [weak self] action in self?.exportBeforeClosing = action },
+            onSavePost: { [weak self] in self?.savePost() },
+            onDuplicatePost: { [weak self] in self?.duplicatePost() },
+            onPostStateChanged: { [weak self] in self?.refreshPostWindow() }))
         self.window = window
+        if isAnnouncement {
+            let postCloseGuard = EditorCloseGuard()
+            self.postCloseGuard = postCloseGuard
+            postCloseGuard.hasUnsavedChanges = { [weak model] in model?.hasUnsavedPostChanges == true }
+            postCloseGuard.projectName = { [weak self] in self?.window?.title ?? "Feature Announcement" }
+            postCloseGuard.isFinishingSave = { [weak self] in self?.saveTask != nil }
+            postCloseGuard.finishSave = { [weak self] in await self?.saveTask?.value == true }
+            postCloseGuard.onDecision = { [weak self] decision, done in
+                if case .save = decision { self?.savePost(onSuccess: done) }
+                else { done() }
+            }
+            postCloseGuard.attach(to: window)
+            refreshPostWindow()
+        }
         if let screen { window.setFrameOrigin(CGPoint(x: screen.visibleFrame.midX - 590, y: screen.visibleFrame.midY - 390)) }
         else { window.center() }
         AppActivationPolicy.enter(hidePreview: true)
         window.makeKeyAndOrderFront(nil)
+    }
+
+    private static func newPostWindow() -> ScreenshotCompositionWindowController {
+        let controller = ScreenshotCompositionWindowController(isAnnouncement: true)
+        additionalPosts[controller.id] = controller
+        return controller
+    }
+
+    static func createPost(on screen: NSScreen?) {
+        newPostWindow().open(on: screen)
+    }
+
+    static func choosePost() {
+        let screen = NSApp.keyWindow?.screen
+        let panel = NSOpenPanel()
+        panel.title = "Open Post"
+        panel.allowedContentTypes = [FeatureAnnouncementProject.contentType]
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            if response == .OK, let url = panel.url { openPost(url, on: screen) }
+        }
+    }
+
+    static func openPost(_ url: URL, on screen: NSScreen? = nil) {
+        let url = url.resolvingSymlinksInPath().standardizedFileURL
+        if let existing = postWindows.first(where: { $0.model?.postURL == url }) {
+            existing.open()
+            return
+        }
+        guard !writingPosts.contains(url), openingPosts.insert(url).inserted else { return }
+        Task { @MainActor in
+            defer { openingPosts.remove(url) }
+            do {
+                let post = try await Task.detached(priority: .userInitiated) {
+                    try FeatureAnnouncementProject.read(from: url)
+                }.value
+                let model = ScreenshotCompositionModel(isAnnouncement: true)
+                model.loadPost(post.makeDocument(), from: url)
+                newPostWindow().show(model, on: screen)
+            } catch {
+                let alert = NSAlert(error: error)
+                NSApp.activate(ignoringOtherApps: true)
+                if let window = NSApp.keyWindow, window.attachedSheet == nil { alert.beginSheetModal(for: window, completionHandler: nil) }
+                else { alert.runModal() }
+            }
+        }
+    }
+
+    private func duplicatePost() {
+        guard let model, model.hasPostContent else { return }
+        var document = model.document
+        if let draft = model.calloutDraft { document.announcement?.callout = draft }
+        let copy = ScreenshotCompositionModel(isAnnouncement: true)
+        copy.loadPost(document, from: nil)
+        let controller = Self.newPostWindow()
+        controller.untitledPostName = (window?.title ?? "Feature Announcement") + " Copy"
+        controller.show(copy, on: window?.screen)
+    }
+
+    private func refreshPostWindow() {
+        guard let model, let window, isAnnouncement else { return }
+        window.representedURL = model.postURL
+        window.title = model.postURL?.deletingPathExtension().lastPathComponent ?? untitledPostName
+        postCloseGuard?.refreshDocumentEdited()
+    }
+
+    private func savePost(onSuccess: (() -> Void)? = nil) {
+        guard let model, let window, saveTask == nil,
+              model.hasPostContent || model.postURL != nil else { return }
+        if let url = model.postURL {
+            writePost(to: url, onSuccess: onSuccess)
+            return
+        }
+        let panel = NSSavePanel()
+        panel.title = "Save Post"
+        panel.allowedContentTypes = [FeatureAnnouncementProject.contentType]
+        panel.nameFieldStringValue = "\(untitledPostName).\(FeatureAnnouncementProject.pathExtension)"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            if response == .OK, let url = panel.url { self?.writePost(to: url, onSuccess: onSuccess) }
+        }
+    }
+
+    private func writePost(to url: URL, onSuccess: (() -> Void)?) {
+        guard let model, saveTask == nil else { return }
+        let url = url.resolvingSymlinksInPath().standardizedFileURL
+        guard !Self.postWindows.contains(where: { $0 !== self && $0.model?.postURL == url }),
+              !Self.openingPosts.contains(url), Self.writingPosts.insert(url).inserted else {
+            model.errorMessage = "That post is open or being saved. Choose a different file."
+            return
+        }
+        model.applyCalloutDraft()
+        let snapshot = model.document
+        model.isSavingPost = true
+        model.errorMessage = nil
+        saveTask = Task { @MainActor in
+            defer {
+                Self.writingPosts.remove(url)
+                model.isSavingPost = false
+                saveTask = nil
+            }
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try FeatureAnnouncementProject.write(snapshot, to: url)
+                }.value
+                model.markPostSaved(to: url, revision: snapshot.revision)
+                refreshPostWindow()
+                if !model.hasUnsavedPostChanges { onSuccess?() }
+                return true
+            } catch {
+                model.errorMessage = error.localizedDescription
+                return false
+            }
+        }
+    }
+
+    static func reviewUnsavedPostBeforeQuitting() -> Bool {
+        guard let controller = postWindows.first(where: { $0.model?.hasUnsavedPostChanges == true || $0.saveTask != nil }),
+              let window = controller.window else { return false }
+        window.makeKeyAndOrderFront(nil)
+        window.performClose(nil)
+        return true
     }
 
     func captureWindow() {
@@ -69,31 +224,24 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         guard let model, model.hasUnexportedChanges else { return true }
         let alert = NSAlert()
-        let canExport = !isAnnouncement || model.canExportAnnouncement
-        alert.messageText = isAnnouncement
-            ? (canExport ? "Export this post before closing?" : "Discard this draft?")
-            : "Export this composition before closing?"
-        alert.informativeText = isAnnouncement
-            ? "The editable post is kept only in this window."
-            : "The canvas is kept only in this window. Export a PNG to keep the combined image; individual layers cannot be reopened from it."
-        if canExport {
-            alert.addButton(withTitle: isAnnouncement ? "Export Both Sizes…" : "Export PNG…")
-            alert.addButton(withTitle: "Discard Changes")
-            alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
-        } else {
-            alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
-            alert.addButton(withTitle: "Discard Changes")
-        }
+        alert.messageText = "Export this composition before closing?"
+        alert.informativeText = "The canvas is kept only in this window. Export a PNG to keep the combined image; individual layers cannot be reopened from it."
+        alert.addButton(withTitle: "Export PNG…")
+        alert.addButton(withTitle: "Discard Changes")
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\u{1b}"
         alert.beginSheetModal(for: sender) { [weak self] response in
-            if canExport && response == .alertFirstButtonReturn { self?.exportBeforeClosing?() }
+            if response == .alertFirstButtonReturn { self?.exportBeforeClosing?() }
             else if response == .alertSecondButtonReturn { sender.close() }
         }
         return false
     }
 
     func windowWillClose(_ notification: Notification) {
+        postCloseGuard?.detach()
+        postCloseGuard = nil
         exportBeforeClosing = nil
         window = nil; model = nil
+        Self.additionalPosts.removeValue(forKey: id)
         AppActivationPolicy.leave(restorePreview: true)
     }
 }
@@ -103,6 +251,9 @@ struct ScreenshotCompositionWindow: View {
     @Environment(\.displayScale) private var displayScale
     var onCaptureWindow: () -> Void = {}
     var onExportAvailable: (@escaping () -> Void) -> Void = { _ in }
+    var onSavePost: () -> Void = {}
+    var onDuplicatePost: () -> Void = {}
+    var onPostStateChanged: () -> Void = {}
     @State private var layout: ScreenshotCompositionLayout = .row
     @State private var exportScale: CGFloat = 0
     @State private var transferStatus: TransferStatus?
@@ -113,7 +264,10 @@ struct ScreenshotCompositionWindow: View {
     @State private var gestureFrame: CGRect?
     @State private var announcementFormat: FeatureAnnouncement.Format = .square
     @State private var phonePreview = false
-    @State private var detailDraft: CGRect?
+    private var detailDraft: CGRect? {
+        get { model.calloutDraft }
+        nonmutating set { model.calloutDraft = newValue }
+    }
 
     private var isAnnouncement: Bool { model.document.announcement != nil }
     private var canExport: Bool {
@@ -143,7 +297,8 @@ struct ScreenshotCompositionWindow: View {
             switch action {
             case .imageUndo: model.undo()
             case .imageRedo: model.redo()
-            case .imageSave, .imageExport: export()
+            case .imageSave: if isAnnouncement { onSavePost() } else { export() }
+            case .imageExport: export()
             case .imageDelete:
                 if model.selection != nil { confirmRemove = true }
             default: return false
@@ -151,6 +306,8 @@ struct ScreenshotCompositionWindow: View {
             return true
         }))
         .onAppear { onExportAvailable(export) }
+        .onChange(of: model.hasUnsavedPostChanges) { onPostStateChanged() }
+        .onChange(of: model.postURL) { onPostStateChanged() }
         .onChange(of: model.document.screenshots.first?.id) { detailDraft = nil }
         .onExitCommand { detailDraft = nil }
         .alert("Remove this screenshot?", isPresented: $confirmRemove) {
@@ -170,10 +327,20 @@ struct ScreenshotCompositionWindow: View {
             Button(action: onCaptureWindow) {
                 Label("Capture Window", systemImage: "macwindow")
             }
-            if !isAnnouncement {
-                Button("Feature Announcement…", systemImage: "rectangle.and.text.magnifyingglass") {
-                    ScreenshotCompositionWindowController.announcement.open(on: NSApp.keyWindow?.screen)
+            Menu {
+                if isAnnouncement {
+                    Button("Save Post", systemImage: "square.and.arrow.down", action: onSavePost)
+                        .disabled(model.isSavingPost || (!model.hasPostContent && model.postURL == nil))
+                    Button("Duplicate Post", systemImage: "plus.square.on.square", action: onDuplicatePost)
+                        .disabled(!model.hasPostContent)
+                } else {
+                    Button("Feature Announcement…", systemImage: "rectangle.and.text.magnifyingglass") {
+                        ScreenshotCompositionWindowController.createPost(on: NSApp.keyWindow?.screen)
+                    }
                 }
+                Button("Open Post…", systemImage: "folder", action: ScreenshotCompositionWindowController.choosePost)
+            } label: {
+                Label("Post", systemImage: "doc")
             }
             Divider().frame(height: 22)
             Button { model.undo() } label: { Label("Undo", systemImage: "arrow.uturn.backward").labelStyle(.iconOnly) }
@@ -197,12 +364,12 @@ struct ScreenshotCompositionWindow: View {
                 section("Post") {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Headline").font(.callout)
-                        TextField("Headline", text: announcementText(\.headline, maximum: 90), axis: .vertical)
+                        TextField("Headline", text: announcementText(\.headline, maximum: FeatureAnnouncement.headlineLimit), axis: .vertical)
                             .textFieldStyle(.roundedBorder).lineLimit(2...3)
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Caption (optional)").font(.callout)
-                        TextField("Caption", text: announcementText(\.caption, maximum: 160), axis: .vertical)
+                        TextField("Caption", text: announcementText(\.caption, maximum: FeatureAnnouncement.captionLimit), axis: .vertical)
                             .textFieldStyle(.roundedBorder).lineLimit(2...4)
                     }
                 }
@@ -257,11 +424,7 @@ struct ScreenshotCompositionWindow: View {
     }
 
     private func applyCallout() {
-        guard let draft = detailDraft else { return }
-        if model.document.announcement?.callout != draft {
-            model.change { $0.announcement?.callout = draft }
-        }
-        detailDraft = nil
+        model.applyCalloutDraft()
     }
 
     private func detailSizeRange(at origin: CGFloat) -> ClosedRange<CGFloat> {

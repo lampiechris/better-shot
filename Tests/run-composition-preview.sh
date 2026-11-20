@@ -24,5 +24,7 @@ cat > "$bundle/Info.plist" <<'PLIST'
 <key>CFBundlePackageType</key><string>APPL</string>
 </dict></plist>
 PLIST
+post_types="$(plutil -extract UTExportedTypeDeclarations xml1 -o - Resources/Info.plist)"
+plutil -insert UTExportedTypeDeclarations -xml "$post_types" "$bundle/Info.plist"
 codesign --force --sign - ".build/CompositionPreview.app"
 echo "Built .build/CompositionPreview.app (isolated test preferences and storage)"

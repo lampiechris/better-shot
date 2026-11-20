@@ -238,6 +238,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         let logo = bitmap.colorAt(x: Int(layout.logoRect!.midX), y: Int(size.height - layout.logoRect!.midY))!
         precondition(logo.usingColorSpace(.sRGB)!.blueComponent > 0.9, "The optional logo must render")
     }
+
     var longPost = FeatureAnnouncement()
     longPost.headline = String(repeating: "機能発表　", count: 18)
     longPost.caption = String(repeating: "W", count: 160)
@@ -292,6 +293,51 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
                      "Preview and export must cast the same relative shadow")
     }
 
+    let postURL = directory.appendingPathComponent("Launch.bettershotpost")
+    model.calloutDraft = selection.offsetBy(dx: 0.02, dy: 0.01)
+    model.applyCalloutDraft()
+    let savedRevision = model.document.revision
+    let savedCallout = model.document.announcement?.callout
+    try FeatureAnnouncementProject.write(model.document, to: postURL)
+    model.markPostSaved(to: postURL, revision: savedRevision)
+    precondition(!model.hasUnsavedPostChanges)
+    let reopened = ScreenshotCompositionModel(defaultLook: AnnotationBackgroundSettings(), isAnnouncement: true)
+    reopened.loadPost(try FeatureAnnouncementProject.read(from: postURL).makeDocument(), from: postURL)
+    precondition(!reopened.hasUnsavedPostChanges && !reopened.canUndo)
+    precondition(reopened.document.announcement?.headline == model.document.announcement?.headline)
+    precondition(reopened.document.announcement?.caption == model.document.announcement?.caption)
+    precondition(reopened.document.announcement?.callout == savedCallout)
+    precondition(reopened.selection?.name == fixture.lastPathComponent)
+    try FileManager.default.removeItem(at: fixture)
+    let reopenedImage = try ScreenshotCompositionRenderer.render(reopened.document, scale: 1, format: .portrait)
+    let originalImage = try ScreenshotCompositionRenderer.render(model.document, scale: 1, format: .portrait)
+    precondition(reopenedImage.dataProvider!.data! as Data == originalImage.dataProvider!.data! as Data,
+                 "Reopened posts must render the same pixels with no access to the source file")
+    let copy = ScreenshotCompositionModel(defaultLook: AnnotationBackgroundSettings(), isAnnouncement: true)
+    copy.loadPost(reopened.document, from: nil)
+    precondition(copy.postURL == nil && copy.hasUnsavedPostChanges)
+    copy.importImages([replacement])
+    precondition(copy.document.announcement?.callout == nil && reopened.document.announcement?.callout == savedCallout)
+    copy.change { $0.announcement?.headline = "New announcement" }
+    precondition(reopened.document.announcement?.headline != copy.document.announcement?.headline)
+    reopened.removeSelection()
+    precondition(reopened.hasUnsavedPostChanges, "Removing the saved image must be kept as an edit")
+    reopened.undo()
+    precondition(!reopened.hasUnsavedPostChanges)
+    let previousSave = try Data(contentsOf: postURL)
+    do {
+        try FeatureAnnouncementProject.write(ScreenshotComposition(), to: postURL)
+        preconditionFailure("Freeform compositions cannot be saved over a post")
+    } catch {
+        let currentSave = try Data(contentsOf: postURL)
+        precondition(previousSave == currentSave)
+    }
+    let corruptURL = directory.appendingPathComponent("Invalid.bettershotpost")
+    try Data("not a project".utf8).write(to: corruptURL)
+    do {
+        _ = try FeatureAnnouncementProject.read(from: corruptURL)
+        preconditionFailure("Invalid projects must be rejected")
+    } catch FeatureAnnouncementProject.ProjectError.invalid {}
     let snapshots = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         .appendingPathComponent(".build/editor-snapshots")
     try FileManager.default.createDirectory(at: snapshots, withIntermediateDirectories: true)
@@ -299,5 +345,5 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
-    print("PASS Feature Announcement replacement and undo, rendered logo and copy, magnified callout pixels and shadow, and paired square/portrait exports")
+    print("PASS Feature Announcement callouts, paired exports, lossless editable project round trip, and independent copies")
 }
