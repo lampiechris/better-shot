@@ -300,6 +300,8 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     try FeatureAnnouncementProject.write(model.document, to: postURL)
     let defaultPost = try FeatureAnnouncementProject.read(from: postURL)
     precondition(defaultPost.announcement.arrangement == .headlineAbove, "Posts without a layout field use Headline Above")
+    precondition(defaultPost.announcement.palette == .default, "Posts without a palette use the original colours")
+    try checkBrandStyles(model, directory: directory)
     model.change { $0.announcement?.arrangement = .screenshotFirst }
     model.calloutDraft = selection.offsetBy(dx: 0.02, dy: 0.01)
     model.applyCalloutDraft()
@@ -315,6 +317,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     precondition(reopened.document.announcement?.caption == model.document.announcement?.caption)
     precondition(reopened.document.announcement?.callout == savedCallout)
     precondition(reopened.document.announcement?.arrangement == .screenshotFirst)
+    precondition(reopened.document.announcement?.palette == model.document.announcement?.palette)
     precondition(reopened.selection?.name == fixture.lastPathComponent)
     try FileManager.default.removeItem(at: fixture)
     let reopenedImage = try ScreenshotCompositionRenderer.render(reopened.document, scale: 1, format: .portrait)
@@ -353,7 +356,70 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
-    print("PASS Social Post layouts, callouts, paired exports, lossless project round trip, and independent copies")
+    print("PASS Social Post layouts, callouts, paired exports, brand styles, lossless project round trip, and independent copies")
+}
+
+@MainActor
+private func checkBrandStyles(_ model: ScreenshotCompositionModel, directory: URL) throws {
+    let url = directory.appendingPathComponent("Brand Styles.plist")
+    let store = SocialPostBrandStyleStore(url: url)
+    var palette = SocialPostPalette(background: .init(red: 0.95, green: 0.91, blue: 0.83),
+                                    accent: .init(red: 0.78, green: 0.20, blue: 0.31))
+    precondition(palette.background.readableForeground == .black)
+    precondition(SocialPostPalette.default.background.readableForeground == .white)
+    for step in 0...100 {
+        let shade = CGFloat(step) / 100
+        var sample = palette
+        sample.background = .init(red: shade, green: shade, blue: shade)
+        precondition(sample.caption.contrast(against: sample.background) >= 4.5)
+    }
+    try store.save(name: "  Studio  ", palette: palette, logo: model.document.announcement?.logo)
+    do {
+        try store.save(name: "studio", palette: .default, logo: nil)
+        preconditionFailure("Saving an existing name must not overwrite its style")
+    } catch SocialPostBrandStyleStore.StyleError.duplicateName {}
+    let reopened = SocialPostBrandStyleStore(url: url)
+    precondition(reopened.styles.count == 1 && reopened.styles[0].name == "Studio")
+    precondition(reopened.styles[0].palette == palette)
+
+    model.change { $0.announcement?.logo = nil }
+    model.applyBrandStyle(reopened.styles[0])
+    precondition(model.document.announcement?.palette == palette && model.document.announcement?.logo != nil)
+    model.undo()
+    precondition(model.document.announcement?.palette == .default && model.document.announcement?.logo == nil)
+    model.redo()
+    // Editing the post makes a new palette value, leaving the preset intact.
+    palette.accent = .init(red: 0.71, green: 0.15, blue: 0.28)
+    model.change { $0.announcement?.palette = palette }
+    precondition(reopened.styles[0].palette.accent != palette.accent)
+    try reopened.delete(reopened.styles[0].id)
+    precondition(SocialPostBrandStyleStore(url: url).styles.isEmpty)
+    precondition(model.document.announcement?.palette == palette && model.document.announcement?.logo != nil)
+
+    let folder = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: directory)
+    for format in FeatureAnnouncement.Format.allCases {
+        let file = folder.appendingPathComponent("Social Post \(format.fileSuffix).png")
+        let bitmap = NSBitmapImageRep(data: try Data(contentsOf: file))!
+        func matches(_ color: NSColor, _ rgb: SocialPostPalette.RGB) -> Bool {
+            // Compare the encoded samples. AppKit can label its sampled RGB values
+            // calibrated even when the PNG was encoded in sRGB.
+            return abs(color.redComponent - rgb.red) < 0.035
+                && abs(color.greenComponent - rgb.green) < 0.035 && abs(color.blueComponent - rgb.blue) < 0.035
+        }
+        precondition(matches(bitmap.colorAt(x: 10, y: 10)!, palette.background))
+        let layout = model.document.announcement!.layout(for: format, screenshot: model.selection?.image)
+        let card = layout.media!.detail!.card
+        let y = Int(format.size.height - card.maxY)
+        let border = (-2...2).map { bitmap.colorAt(x: Int(card.midX), y: y + $0)! }
+        precondition(border.contains { matches($0, palette.accent) },
+                     "The saved accent must render on the \(format.rawValue) callout border, got \(border)")
+        let screenshot = layout.media!.screenshotRect
+        let selection = layout.media!.detail!.source
+        let outlineX = Int(screenshot.minX + selection.midX * screenshot.width)
+        let outlineY = Int(format.size.height - screenshot.maxY + selection.minY * screenshot.height)
+        precondition((-2...2).contains { matches(bitmap.colorAt(x: outlineX, y: outlineY + $0)!, palette.accent) },
+                     "The border and the screenshot outline must match")
+    }
 }
 
 @MainActor

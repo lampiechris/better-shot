@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Save reusable brand styles for social posts, including the background colour, callout accent, and logo.
 - Choose Headline Above, Screenshot First, or Side by Side for a social post, with balanced headlines and support for manual line breaks.
 - Save, reopen, and duplicate editable social posts with their images and callouts included.
 - Highlight a screenshot detail with a magnified callout and preview square or portrait posts at phone width.

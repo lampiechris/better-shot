@@ -264,6 +264,10 @@ struct ScreenshotCompositionWindow: View {
     @State private var gestureFrame: CGRect?
     @State private var announcementFormat: FeatureAnnouncement.Format = .square
     @State private var phonePreview = false
+    @State private var showSaveBrandStyle = false
+    @State private var brandStyleName = ""
+    @State private var brandStyleSaveError: String?
+    @State private var brandStyleToDelete: SocialPostBrandStyleStore.Style?
     private var detailDraft: CGRect? {
         get { model.calloutDraft }
         nonmutating set { model.calloutDraft = newValue }
@@ -314,6 +318,16 @@ struct ScreenshotCompositionWindow: View {
             Button("Remove", role: .destructive) { model.removeSelection() }
             Button("Cancel", role: .cancel) {}
         } message: { Text("The source file is kept. You can undo this change.") }
+        .sheet(isPresented: $showSaveBrandStyle) { brandStyleSaveSheet }
+        .alert("Delete Brand Style?", isPresented: Binding(
+            get: { brandStyleToDelete != nil },
+            set: { if !$0 { brandStyleToDelete = nil } }
+        ), presenting: brandStyleToDelete) { style in
+            Button("Delete", role: .destructive) { deleteBrandStyle(style) }
+            Button("Cancel", role: .cancel) {}
+        } message: { style in
+            Text("“\(style.name)” will be removed from your saved styles.")
+        }
         .onDrop(of: [UTType.fileURL], isTargeted: $dropTarget, perform: importDrop)
     }
 
@@ -380,10 +394,10 @@ struct ScreenshotCompositionWindow: View {
                             .textFieldStyle(.roundedBorder).lineLimit(2...4)
                     }
                 }
-                if !model.document.screenshots.isEmpty {
-                    section("Magnified Callout") { calloutControls }
-                }
-                section("Logo") {
+                section("Brand Style") {
+                    brandStyleMenu
+                    ColorPicker("Background", selection: brandColor(\.background), supportsOpacity: false)
+                    ColorPicker("Accent", selection: brandColor(\.accent), supportsOpacity: false)
                     if let logo = model.document.announcement?.logo {
                         Image(decorative: logo, scale: 1).resizable().scaledToFit().frame(height: 36)
                     }
@@ -394,11 +408,93 @@ struct ScreenshotCompositionWindow: View {
                         }
                     }
                 }
+                if !model.document.screenshots.isEmpty {
+                    section("Magnified Callout") { calloutControls }
+                }
                 errorControls
             }.padding(16)
         }
         .scrollIndicators(.hidden)
         .background(EditorChrome.panel)
+    }
+
+    private var brandStyleMenu: some View {
+        let styles = SocialPostBrandStyleStore.shared.styles
+        return Menu("Presets") {
+            ForEach(styles) { style in
+                Button(style.name) { model.applyBrandStyle(style) }
+            }
+            if !styles.isEmpty { Divider() }
+            Button("Save Brand Style…") {
+                brandStyleName = ""
+                brandStyleSaveError = nil
+                showSaveBrandStyle = true
+            }
+            Button("Reset Colours") {
+                model.change { $0.announcement?.palette = .default }
+            }
+            .disabled(model.document.announcement?.palette == .default)
+            if !styles.isEmpty {
+                Menu("Delete Saved Style") {
+                    ForEach(styles) { style in
+                        Button(style.name, role: .destructive) { brandStyleToDelete = style }
+                    }
+                }
+            }
+        }.accessibilityLabel("Brand Style Presets")
+    }
+
+    private var brandStyleSaveSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Save Brand Style").font(.headline)
+            TextField("Name", text: $brandStyleName)
+                .textFieldStyle(.roundedBorder)
+            if let brandStyleSaveError {
+                Text(brandStyleSaveError).font(.callout).foregroundStyle(.red)
+            }
+            HStack {
+                Spacer()
+                Button("Cancel") { showSaveBrandStyle = false }.keyboardShortcut(.cancelAction)
+                Button("Save", action: saveBrandStyle)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(brandStyleName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 340)
+    }
+
+    private func brandColor(_ key: WritableKeyPath<SocialPostPalette, SocialPostPalette.RGB>) -> Binding<Color> {
+        Binding {
+            let color = (model.document.announcement?.palette ?? .default)[keyPath: key]
+            return Color(.sRGB, red: color.red, green: color.green, blue: color.blue)
+        } set: { selection in
+            guard let color = NSColor(selection).usingColorSpace(.sRGB) else { return }
+            let rgb = SocialPostPalette.RGB(red: min(1, max(0, color.redComponent)),
+                green: min(1, max(0, color.greenComponent)), blue: min(1, max(0, color.blueComponent)))
+            guard rgb.isValid, model.document.announcement?.palette[keyPath: key] != rgb else { return }
+            model.change { $0.announcement?.palette[keyPath: key] = rgb }
+        }
+    }
+
+    private func saveBrandStyle() {
+        guard let post = model.document.announcement else { return }
+        do {
+            try SocialPostBrandStyleStore.shared.save(name: brandStyleName, palette: post.palette, logo: post.logo)
+            model.errorMessage = nil
+            showSaveBrandStyle = false
+        } catch {
+            brandStyleSaveError = error.localizedDescription
+        }
+    }
+
+    private func deleteBrandStyle(_ style: SocialPostBrandStyleStore.Style) {
+        do {
+            try SocialPostBrandStyleStore.shared.delete(style.id)
+            model.errorMessage = nil
+        } catch {
+            model.errorMessage = error.localizedDescription
+        }
     }
 
     @ViewBuilder

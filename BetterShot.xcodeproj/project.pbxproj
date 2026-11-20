@@ -60,6 +60,7 @@
 		3A14826DE9ED6F5F4C674ABD /* AnnotationSwatch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CD064BBAE4EC5BF78867B77 /* AnnotationSwatch.swift */; };
 		3AA2E443AA076D9AA4BCFFA9 /* PinnedScreenshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B3D8697A2AEA9FD3527BA3D /* PinnedScreenshot.swift */; };
 		3AA56BD8027AACABC1257B3D /* AnnotationWallpaperPreviewCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06C8996BCFE669700EEF01EE /* AnnotationWallpaperPreviewCache.swift */; };
+		3BAAA9C098FF277A41008526 /* SocialPostBrandStyles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9322CEB479234225261E457A /* SocialPostBrandStyles.swift */; };
 		3BF5DBCBE10B92005C121A2D /* RecordingSourceCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7711E5BB4466B588EE32C7BC /* RecordingSourceCatalog.swift */; };
 		3DFD0AFCC40248A410ACC8BD /* AnnotationEditorZoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FC217457F424CFCD7667853 /* AnnotationEditorZoom.swift */; };
 		3EB30B21F2F488EC0524A801 /* TeleprompterOverlayPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A5FFC877AB3AB6B64894072 /* TeleprompterOverlayPresenter.swift */; };
@@ -376,6 +377,7 @@
 		90E774656DB29A1792294977 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
 		92E878939547822AC5792A1E /* RecordingMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingMotion.swift; sourceTree = "<group>"; };
 		92F59F62D19FF9B83F50E2D1 /* CloudUploadOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudUploadOptions.swift; sourceTree = "<group>"; };
+		9322CEB479234225261E457A /* SocialPostBrandStyles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialPostBrandStyles.swift; sourceTree = "<group>"; };
 		94D707990F014D8BE452023A /* BundledBackgrounds.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundledBackgrounds.swift; sourceTree = "<group>"; };
 		977759233837DBEB3EB78A1E /* AnnotationRedactionImageProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnnotationRedactionImageProcessor.swift; sourceTree = "<group>"; };
 		97939ED1B8AE58C014C685E7 /* TeleprompterComposerPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeleprompterComposerPresenter.swift; sourceTree = "<group>"; };
@@ -730,6 +732,7 @@
 				C62E4421999FABC6B040B9CD /* ShapeRenderer.swift */,
 				748342A3B1322ED390C11DB4 /* Shapes2d.swift */,
 				F2DD10CB10250C7A3DEC3186 /* SmartRedactionRecognizer.swift */,
+				9322CEB479234225261E457A /* SocialPostBrandStyles.swift */,
 				B3B649BF5B80698892056F6D /* StraightArrow.swift */,
 				7CF3030FEFF60A9E00ACF22C /* StrokeOptions.swift */,
 				7846895DF5BEB0C9BC144710 /* StrokeOutline.swift */,
@@ -1112,6 +1115,7 @@
 				8782829F9AD2E1BE2B796AC7 /* ShortcutService.swift in Sources */,
 				6EE4DDA9308DBD7BDF01C954 /* SilenceDetector.swift in Sources */,
 				40B553DB8E65CE93297F3D11 /* SmartRedactionRecognizer.swift in Sources */,
+				3BAAA9C098FF277A41008526 /* SocialPostBrandStyles.swift in Sources */,
 				618723BB6B078CD0746D3345 /* StraightArrow.swift in Sources */,
 				9E706EC495738239096A37E8 /* StrokeOptions.swift in Sources */,
 				8C76612CC356391B94F0AD36 /* StrokeOutline.swift in Sources */,

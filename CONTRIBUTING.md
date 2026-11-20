@@ -283,6 +283,9 @@ images have been written.
 files with embedded lossless PNGs. Keep the project save revision independent of
 PNG export, and open duplicate posts without a destination URL. The document
 type in `Resources/Info.plist` routes Finder opens through `BetterShotDelegate`.
+Social Post stores opaque sRGB colours and the logo in the project. Applying a
+brand style copies the values from `SocialPostBrandStyleStore`. Keep preview and
+PNG export on the same text contrast and callout colour calculations.
 
 Image annotations use source-pixel coordinates. `AnnoShapeDrawing` is shared by
 the canvas and export; `AnnotationImageTransform` handles full-resolution rotation

@@ -6,6 +6,8 @@ nonisolated struct FeatureAnnouncement: Sendable {
     static let title = "Social Post"
     static let headlineLimit = 90
     static let captionLimit = 160
+    static let logoMaxEdge = 1024
+    static let logoPixelLimit = logoMaxEdge * logoMaxEdge
 
     enum Arrangement: String, Codable, CaseIterable, Identifiable, Sendable {
         case headlineAbove
@@ -39,12 +41,12 @@ nonisolated struct FeatureAnnouncement: Sendable {
     var logo: CGImage?
     var callout: CGRect?
     var arrangement: Arrangement = .headlineAbove
+    var palette: SocialPostPalette = .default
 
     // Source coordinates are normalized with the origin at the top left.
     static let defaultCallout = CGRect(x: 0.375, y: 0.375, width: 0.25, height: 0.25)
     static let minimumDetail: CGFloat = 0.02
     static let maximumDetail: CGFloat = 0.5
-    private static let calloutColor = CGColor(red: 0.60, green: 0.82, blue: 1, alpha: 1)
 
     static func detailSelection(from start: CGPoint, to end: CGPoint) -> CGRect? {
         let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
@@ -58,7 +60,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
 
     var hasHeadline: Bool { !headline.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     var hasContent: Bool {
-        hasHeadline || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || logo != nil
+        hasHeadline || !caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || logo != nil || palette != .default
     }
 
     struct Layout {
@@ -92,6 +94,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
         let image: CGImage
         let imageRect: CGRect
         let card: CGRect
+        let accent: SocialPostPalette.RGB
 
         func drawOutline(in context: CGContext, screenshot: CGRect, clip: CGPath) {
             let selected = CGRect(
@@ -104,11 +107,11 @@ nonisolated struct FeatureAnnouncement: Sendable {
             context.addPath(clip)
             context.clip()
             context.addPath(outline)
-            context.setStrokeColor(CGColor(gray: 0.08, alpha: 0.78))
+            context.setStrokeColor(accent.readableForeground.cgColor)
             context.setLineWidth(8)
             context.strokePath()
             context.addPath(outline)
-            context.setStrokeColor(FeatureAnnouncement.calloutColor)
+            context.setStrokeColor(accent.cgColor)
             context.setLineWidth(4)
             context.strokePath()
             context.restoreGState()
@@ -124,7 +127,11 @@ nonisolated struct FeatureAnnouncement: Sendable {
             context.setFillColor(CGColor(red: 0.10, green: 0.14, blue: 0.19, alpha: 1))
             context.fillPath()
             context.addPath(outer)
-            context.setStrokeColor(FeatureAnnouncement.calloutColor)
+            context.setStrokeColor(accent.readableForeground.cgColor)
+            context.setLineWidth(4)
+            context.strokePath()
+            context.addPath(outer)
+            context.setStrokeColor(accent.cgColor)
             context.setLineWidth(2)
             context.strokePath()
             context.addPath(inner)
@@ -157,7 +164,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
         let screenshot = CGRect(x: area.midX - fittedScreenshot.width / 2, y: card.maxY + gap,
                                 width: fittedScreenshot.width, height: fittedScreenshot.height)
         return MediaLayout(screenshotRect: screenshot, insetAboveScreenshot: unused,
-                           detail: Detail(source: callout, image: crop, imageRect: inset, card: card))
+                           detail: Detail(source: callout, image: crop, imageRect: inset, card: card, accent: palette.accent))
     }
 
     private static func crop(_ image: CGImage, to detail: CGRect) -> CGImage? {
@@ -180,10 +187,10 @@ nonisolated struct FeatureAnnouncement: Sendable {
         }
         if let logoRect { top = logoRect.minY - 28 }
         let title = Self.textFrame(headline, size: columns ? 62 : 76, maxHeight: columns ? 300 : 190, bold: true,
-                                   x: margin, top: top, width: width, opacity: 1)
+                                   x: margin, top: top, width: width, color: palette.background.readableForeground.cgColor)
         if let title { top -= title.height + 16 }
         let subtitle = Self.textFrame(caption, size: columns ? 32 : 37, maxHeight: columns ? 166 : 110, bold: false,
-                                      x: margin, top: top, width: width, opacity: 0.8)
+                                      x: margin, top: top, width: width, color: palette.caption.cgColor)
         let copyBottom = if let subtitle { top - subtitle.height }
             else if title != nil { top + 16 }
             else { logoRect?.minY ?? top }
@@ -222,7 +229,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
 
     private static func textFrame(
         _ value: String, size: CGFloat, maxHeight: CGFloat, bold: Bool,
-        x: CGFloat, top: CGFloat, width: CGFloat, opacity: CGFloat
+        x: CGFloat, top: CGFloat, width: CGFloat, color: CGColor
     ) -> (frame: CTFrame, height: CGFloat)? {
         let unwrapped = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         guard !unwrapped.isEmpty else { return nil }
@@ -236,7 +243,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
                 ?? CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
             let attributes: [NSAttributedString.Key: Any] = [
                 NSAttributedString.Key(kCTFontAttributeName as String): font,
-                NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: opacity)
+                NSAttributedString.Key(kCTForegroundColorAttributeName as String): color
             ]
             func fittedFrame(_ copy: String) -> (frame: CTFrame, height: CGFloat)? {
                 let attributed = NSAttributedString(string: copy, attributes: attributes)
@@ -264,7 +271,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
         // A pasted headline can contain more line breaks than fit at any readable size.
         if text != unwrapped {
             return textFrame(unwrapped, size: size, maxHeight: maxHeight, bold: bold,
-                             x: x, top: top, width: width, opacity: opacity)
+                             x: x, top: top, width: width, color: color)
         }
         return nil
     }

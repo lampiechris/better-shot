@@ -53,7 +53,7 @@ subtitles and teleprompter speech tracking need macOS 26.
   separate windows on one canvas. Drag, resize, reorder, arrange, and style each screenshot,
   then export a combined high-resolution PNG. [First-pass limits and usage](docs/screenshot-composition.md).
 - **Social posts** start with **Create Social Post** on a screenshot preview. Choose a layout,
-  add a headline and magnified callout, and export square and portrait PNGs together.
+  add a headline and magnified callout, apply a saved brand style, and export square and portrait PNGs together.
 - **Recording:** a display, window, or area, with system audio, microphone, camera, and a teleprompter.
 - **Video editor:** cuts, speed, zooms, captions, masks, camera layouts, cursor styles, and 3D shots.
 - Choose social aspect ratios (9:16, 4:5, 3:4, and 1:1) in Crop, in the image

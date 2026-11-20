@@ -99,7 +99,6 @@ final class ScreenshotCompositionModel {
         document.padding = min(300, max(0, defaultLook.padding * 1600))
         if isAnnouncement {
             document.announcement = FeatureAnnouncement()
-            document.background = .solid(.graphite)
         }
     }
 
@@ -226,12 +225,26 @@ final class ScreenshotCompositionModel {
 
     func importAnnouncementLogo(_ url: URL) {
         guard document.announcement != nil else { return }
-        guard let image = Self.decodeImage(url, pixelLimit: 64_000_000, maxEdge: 1024) else {
+        guard let image = Self.decodeImage(url, pixelLimit: 64_000_000, maxEdge: FeatureAnnouncement.logoMaxEdge) else {
             errorMessage = "Could not read the logo. Choose a supported image up to 64 megapixels."
             return
         }
         change { $0.announcement?.logo = image }
         errorMessage = nil
+    }
+
+    func applyBrandStyle(_ style: SocialPostBrandStyleStore.Style) {
+        guard document.announcement != nil else { return }
+        do {
+            let logo = try style.loadLogo()
+            change {
+                $0.announcement?.palette = style.palette
+                $0.announcement?.logo = logo
+            }
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     private static func decodeImage(_ url: URL, pixelLimit: Int, maxEdge: Int = Int.max) -> CGImage? {
@@ -306,7 +319,13 @@ nonisolated enum ScreenshotCompositionRenderer {
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw CocoaError(.fileWriteUnknown) }
         context.scaleBy(x: scale, y: scale)
-        AnnotationBackgroundRenderer.drawBackground(document.background, in: CGRect(origin: .zero, size: canvasSize), context: context)
+        let canvas = CGRect(origin: .zero, size: canvasSize)
+        if let announcement {
+            context.setFillColor(announcement.palette.background.cgColor)
+            context.fill(canvas)
+        } else {
+            AnnotationBackgroundRenderer.drawBackground(document.background, in: canvas, context: context)
+        }
         context.interpolationQuality = .high
         for item in document.screenshots {
             let frame: CGRect

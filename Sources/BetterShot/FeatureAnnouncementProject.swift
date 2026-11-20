@@ -28,6 +28,7 @@ nonisolated enum FeatureAnnouncementProject {
         var callout: CGRect?
         var screenshot: Screenshot?
         var arrangement: FeatureAnnouncement.Arrangement?
+        var palette: SocialPostPalette?
     }
 
     private struct Screenshot: Codable {
@@ -44,7 +45,6 @@ nonisolated enum FeatureAnnouncementProject {
 
         @MainActor func makeDocument() -> ScreenshotComposition {
             var document = ScreenshotComposition()
-            document.background = .solid(.graphite)
             document.announcement = announcement
             if let screenshot { document.screenshots = [screenshot] }
             return document
@@ -59,7 +59,8 @@ nonisolated enum FeatureAnnouncementProject {
         }
         let contents = FileContents(headline: post.headline, caption: post.caption,
             logoPNG: try post.logo.map(encodePNG), callout: post.callout, screenshot: screenshot,
-            arrangement: post.arrangement == .headlineAbove ? nil : post.arrangement)
+            arrangement: post.arrangement == .headlineAbove ? nil : post.arrangement,
+            palette: post.palette == .default ? nil : post.palette)
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         let data = try encoder.encode(contents)
@@ -81,10 +82,12 @@ nonisolated enum FeatureAnnouncementProject {
         }
         guard contents.version == 1 else { throw ProjectError.version }
         guard contents.headline.count <= FeatureAnnouncement.headlineLimit,
-              contents.caption.count <= FeatureAnnouncement.captionLimit else { throw ProjectError.invalid }
+              contents.caption.count <= FeatureAnnouncement.captionLimit,
+              contents.palette?.isValid != false else { throw ProjectError.invalid }
         let announcement = FeatureAnnouncement(headline: contents.headline, caption: contents.caption,
-            logo: try contents.logoPNG.map { try decodePNG($0, pixelLimit: 1024 * 1024) },
-            callout: contents.callout, arrangement: contents.arrangement ?? .headlineAbove)
+            logo: try contents.logoPNG.map { try decodePNG($0, pixelLimit: FeatureAnnouncement.logoPixelLimit) },
+            callout: contents.callout, arrangement: contents.arrangement ?? .headlineAbove,
+            palette: contents.palette ?? .default)
         if let rect = contents.callout {
             // Tolerate normal floating-point roundoff at the selection edges.
             let epsilon: CGFloat = 0.000_001
@@ -104,7 +107,7 @@ nonisolated enum FeatureAnnouncementProject {
         return LoadedPost(announcement: announcement, screenshot: screenshot)
     }
 
-    private static func encodePNG(_ image: CGImage) throws -> Data {
+    static func encodePNG(_ image: CGImage) throws -> Data {
         let data = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)
         else { throw CocoaError(.fileWriteUnknown) }
@@ -113,7 +116,7 @@ nonisolated enum FeatureAnnouncementProject {
         return data as Data
     }
 
-    private static func decodePNG(_ data: Data, pixelLimit: Int) throws -> CGImage {
+    static func decodePNG(_ data: Data, pixelLimit: Int) throws -> CGImage {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetType(source) as String? == UTType.png.identifier,
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
