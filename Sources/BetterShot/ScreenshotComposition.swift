@@ -175,7 +175,10 @@ final class ScreenshotCompositionModel {
                 shadowStyle: defaultLook.shadowStyle))
         }
         if !imported.isEmpty {
-            change { $0.screenshots = existing + imported }
+            change {
+                $0.screenshots = existing + imported
+                $0.announcement?.callout = nil
+            }
             selectedID = imported.last?.id
         }
         errorMessage = failed.isEmpty ? nil : "Could not import: \(failed.joined(separator: ", ")). Use a supported image, up to 24 images, 64 MP each and 128 MP total."
@@ -211,7 +214,10 @@ final class ScreenshotCompositionModel {
     }
 
     func removeSelection() {
-        change { $0.screenshots.removeAll { $0.id == selectedID } }
+        change {
+            $0.screenshots.removeAll { $0.id == selectedID }
+            $0.announcement?.callout = nil
+        }
         selectedID = document.screenshots.last?.id
     }
 
@@ -249,12 +255,13 @@ nonisolated enum ScreenshotCompositionRenderer {
     }
 
     static func render(_ document: ScreenshotComposition, scale: CGFloat,
-                       format: FeatureAnnouncement.Format = .square) throws -> CGImage {
-        let post = document.announcement?.layout(for: format)
+                       format: FeatureAnnouncement.Format = .square, showsCalloutOutline: Bool = true) throws -> CGImage {
+        let announcement = document.announcement
+        let post = announcement?.layout(for: format)
         let canvasSize = post?.size ?? document.size
         let size = try outputSize(canvasSize, scale: scale)
-        let screenshotRect = post.flatMap { layout in
-            document.screenshots.first.map { FeatureAnnouncement.fit($0.image, in: layout.screenshotArea) }
+        let media = post.flatMap { layout in
+            document.screenshots.first.flatMap { announcement?.mediaLayout(for: $0.image, in: layout.screenshotArea) }
         }
         guard let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height),
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -264,7 +271,7 @@ nonisolated enum ScreenshotCompositionRenderer {
         context.interpolationQuality = .high
         for item in document.screenshots {
             let frame: CGRect
-            if let fitted = screenshotRect {
+            if let fitted = media?.screenshotRect {
                 frame = CGRect(x: fitted.minX, y: canvasSize.height - fitted.maxY, width: fitted.width, height: fitted.height)
             } else {
                 frame = item.frame
@@ -279,18 +286,23 @@ nonisolated enum ScreenshotCompositionRenderer {
             let radius = min(rect.width, rect.height) * item.cornerRadius
             let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
             AnnotationBackgroundRenderer.drawShadow(path: path, knockoutPath: path, strength: item.shadow,
-                                                    style: item.shadowStyle, context: context)
+                                                    style: item.shadowStyle, context: context,
+                                                    outputScale: post == nil ? 1 : scale)
             context.saveGState()
             context.addPath(path); context.clip()
             context.interpolationQuality = pixelWidth == CGFloat(item.image.width)
                 && pixelHeight == CGFloat(item.image.height) ? .none : .high
             context.draw(item.image, in: rect)
             context.restoreGState()
+            if showsCalloutOutline {
+                media?.detail?.drawOutline(in: context, screenshot: rect, clip: path)
+            }
         }
         context.interpolationQuality = .high
+        media?.detail?.drawCard(in: context, outputScale: scale)
         if let post {
-            let inset = screenshotRect.map { max(0, post.screenshotArea.maxY - $0.maxY) } ?? 0
-            post.draw(in: context, logo: document.announcement?.logo, insetAboveScreenshot: inset)
+            post.draw(in: context, logo: announcement?.logo,
+                      insetAboveScreenshot: media?.insetAboveScreenshot ?? 0)
         }
         guard let image = context.makeImage() else { throw CocoaError(.fileWriteUnknown) }
         return image

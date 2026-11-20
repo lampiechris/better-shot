@@ -429,7 +429,8 @@ nonisolated enum AnnotationBackgroundRenderer {
         knockoutPath: CGPath,
         strength: CGFloat,
         style: AnnotationShadowStyle,
-        context: CGContext
+        context: CGContext,
+        outputScale: CGFloat = 1
     ) {
         let rect = path.boundingBoxOfPath
         guard let layer = style.layer(
@@ -447,9 +448,10 @@ nonisolated enum AnnotationBackgroundRenderer {
         context.addPath(exterior)
         context.clip(using: .evenOdd)
 
+        // Quartz specifies these in device space, independent of the canvas transform.
         context.setShadow(
-            offset: CGSize(width: 0, height: -layer.yOffset),
-            blur: layer.coreGraphicsBlur,
+            offset: CGSize(width: 0, height: -layer.yOffset * outputScale),
+            blur: layer.coreGraphicsBlur * outputScale,
             color: NSColor.black.withAlphaComponent(layer.alpha).cgColor
         )
         context.setFillColor(NSColor.black.cgColor)

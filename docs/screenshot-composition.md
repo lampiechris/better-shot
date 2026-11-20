@@ -36,8 +36,12 @@ baked-in shadow, allowing the per-image shadow to remain adjustable.
    or open **Feature Announcement…** from the **Compose Screenshots** toolbar.
 2. Add a headline and, if you like, a caption and logo. Use **Replace Screenshot…**
    to change the image while keeping the copy and logo.
-3. Switch the preview between **1:1** and **4:5** at the bottom of the window.
-4. Click **Export Both Sizes…** and pick a folder. BetterShot creates a new
+3. Click **Add Callout**, drag over a detail on the screenshot, then click
+   **Apply Callout**. You can also enter the selection under **Adjust Selection**.
+   Replacing the screenshot clears its callout. Undo restores both.
+4. Switch between **1:1** and **4:5**, or turn on **Phone Size** to check either
+   layout at up to 390 points wide.
+5. Click **Export Both Sizes…** and pick a folder. BetterShot creates a new
    subfolder with two PNGs at 1080 × 1080 and 1080 × 1350 pixels.
 
 The post is editable while its window is open. It has its own undo history

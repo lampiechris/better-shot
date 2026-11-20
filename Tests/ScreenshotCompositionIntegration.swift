@@ -244,6 +244,54 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     let compact = longPost.layout(for: .square)
     precondition(compact.headline != nil && compact.caption != nil && compact.screenshotArea.height > 400)
 
+    let pattern = CGContext(data: nil, width: 800, height: 400, bitsPerComponent: 8, bytesPerRow: 0,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    pattern.setFillColor(CGColor(red: 0.15, green: 0.25, blue: 0.65, alpha: 1))
+    pattern.fill(CGRect(x: 0, y: 0, width: 800, height: 400))
+    pattern.setFillColor(CGColor(red: 0.93, green: 0.3, blue: 0.13, alpha: 1))
+    pattern.fill(CGRect(x: 0, y: 200, width: 320, height: 200))
+    let fixture = directory.appendingPathComponent("detail.png")
+    let destination = CGImageDestinationCreateWithURL(fixture as CFURL, "public.png" as CFString, 1, nil)!
+    CGImageDestinationAddImage(destination, pattern.makeImage()!, nil)
+    precondition(CGImageDestinationFinalize(destination))
+    model.importImages([fixture])
+    let selection = FeatureAnnouncement.detailSelection(from: CGPoint(x: 0.3, y: 0.35), to: CGPoint(x: 0.05, y: 0.05))!
+    precondition(abs(selection.minX - 0.05) < 0.000_001 && abs(selection.minY - 0.05) < 0.000_001)
+    precondition(FeatureAnnouncement.detailSelection(from: .zero, to: CGPoint(x: 3, y: 3)) == CGRect(x: 0, y: 0, width: 0.5, height: 0.5))
+    model.change { $0.announcement?.callout = selection }
+    model.importImages([replacement])
+    precondition(model.document.announcement?.callout == nil, "A replacement must not highlight the old screenshot's detail")
+    model.undo()
+    precondition(model.document.announcement?.callout == selection)
+    let calloutFolder = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
+    for format in FeatureAnnouncement.Format.allCases {
+        let announcement = model.document.announcement!
+        let media = announcement.mediaLayout(for: model.document.screenshots[0].image,
+            in: announcement.layout(for: format).screenshotArea)
+        let detail = media.detail!
+        precondition(detail.card.maxY < media.screenshotRect.minY)
+        precondition(detail.imageRect.width > selection.width * media.screenshotRect.width)
+        let url = calloutFolder.appendingPathComponent("Feature Announcement \(format.fileSuffix).png")
+        let bitmap = NSBitmapImageRep(data: try Data(contentsOf: url))!
+        func color(_ x: CGFloat, _ y: CGFloat) -> NSColor {
+            bitmap.colorAt(x: Int(x), y: Int(format.size.height - y))!.usingColorSpace(.sRGB)!
+        }
+        let inset = color(detail.imageRect.midX, detail.imageRect.midY)
+        precondition(inset.redComponent > 0.85 && inset.blueComponent < 0.25,
+                     "The inset must show the selected top-left pixels")
+        let full = color(media.screenshotRect.midX, media.screenshotRect.midY)
+        precondition(full.blueComponent > 0.55, "The full screenshot remains visible")
+        let shadow = color(detail.card.midX, detail.card.minY - 5)
+        let background = color(20, detail.card.minY - 5)
+        precondition(shadow.redComponent < background.redComponent - 0.015, "The inset has a visible drop shadow")
+        let preview = NSBitmapImageRep(cgImage: try ScreenshotCompositionRenderer.render(model.document, scale: 0.5, format: format))
+        let probe = CGPoint(x: detail.card.midX, y: format.size.height - detail.card.minY + 26)
+        let exportShadow = bitmap.colorAt(x: Int(probe.x), y: Int(probe.y))!.usingColorSpace(.sRGB)!
+        let previewShadow = preview.colorAt(x: Int(probe.x / 2), y: Int(probe.y / 2))!.usingColorSpace(.sRGB)!
+        precondition(abs(exportShadow.redComponent - previewShadow.redComponent) < 0.015,
+                     "Preview and export must cast the same relative shadow")
+    }
+
     let snapshots = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         .appendingPathComponent(".build/editor-snapshots")
     try FileManager.default.createDirectory(at: snapshots, withIntermediateDirectories: true)
@@ -251,5 +299,5 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         try snapshot(ScreenshotCompositionWindow(model: model), scheme: scheme, width: 980,
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
-    print("PASS Feature Announcement replacement and undo, rendered logo and copy, and paired square/portrait exports")
+    print("PASS Feature Announcement replacement and undo, rendered logo and copy, magnified callout pixels and shadow, and paired square/portrait exports")
 }

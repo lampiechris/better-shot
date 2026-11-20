@@ -100,6 +100,7 @@ final class ScreenshotCompositionWindowController: NSObject, NSWindowDelegate {
 
 struct ScreenshotCompositionWindow: View {
     @Bindable var model: ScreenshotCompositionModel
+    @Environment(\.displayScale) private var displayScale
     var onCaptureWindow: () -> Void = {}
     var onExportAvailable: (@escaping () -> Void) -> Void = { _ in }
     @State private var layout: ScreenshotCompositionLayout = .row
@@ -111,6 +112,8 @@ struct ScreenshotCompositionWindow: View {
     @State private var confirmRemove = false
     @State private var gestureFrame: CGRect?
     @State private var announcementFormat: FeatureAnnouncement.Format = .square
+    @State private var phonePreview = false
+    @State private var detailDraft: CGRect?
 
     private var isAnnouncement: Bool { model.document.announcement != nil }
     private var canExport: Bool {
@@ -148,6 +151,8 @@ struct ScreenshotCompositionWindow: View {
             return true
         }))
         .onAppear { onExportAvailable(export) }
+        .onChange(of: model.document.screenshots.first?.id) { detailDraft = nil }
+        .onExitCommand { detailDraft = nil }
         .alert("Remove this screenshot?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) { model.removeSelection() }
             Button("Cancel", role: .cancel) {}
@@ -201,6 +206,9 @@ struct ScreenshotCompositionWindow: View {
                             .textFieldStyle(.roundedBorder).lineLimit(2...4)
                     }
                 }
+                if !model.document.screenshots.isEmpty {
+                    section("Magnified Callout") { calloutControls }
+                }
                 section("Logo") {
                     if let logo = model.document.announcement?.logo {
                         Image(decorative: logo, scale: 1).resizable().scaledToFit().frame(height: 36)
@@ -217,6 +225,54 @@ struct ScreenshotCompositionWindow: View {
         }
         .scrollIndicators(.hidden)
         .background(EditorChrome.panel)
+    }
+
+    @ViewBuilder
+    private var calloutControls: some View {
+        if let draft = detailDraft {
+            Text("Drag over the detail to magnify.").font(.caption).foregroundStyle(.secondary)
+            DisclosureGroup("Adjust Selection") {
+                VStack(spacing: 6) {
+                    detailSlider("Left", \.origin.x, range: 0...(1 - draft.width))
+                    detailSlider("Top", \.origin.y, range: 0...(1 - draft.height))
+                    detailSlider("Width", \.size.width, range: detailSizeRange(at: draft.minX))
+                    detailSlider("Height", \.size.height, range: detailSizeRange(at: draft.minY))
+                }.padding(.top, 7)
+            }
+            HStack {
+                Button("Apply Callout", action: applyCallout).buttonStyle(.borderedProminent)
+                Button("Cancel") { detailDraft = nil }
+            }
+        } else if let callout = model.document.announcement?.callout {
+            HStack {
+                Button("Edit Callout") { detailDraft = callout }
+                Button("Remove") { model.change { $0.announcement?.callout = nil } }
+                    .accessibilityLabel("Remove Callout")
+            }
+        } else {
+            Button("Add Callout", systemImage: "plus.magnifyingglass") {
+                detailDraft = FeatureAnnouncement.defaultCallout
+            }
+        }
+    }
+
+    private func applyCallout() {
+        guard let draft = detailDraft else { return }
+        if model.document.announcement?.callout != draft {
+            model.change { $0.announcement?.callout = draft }
+        }
+        detailDraft = nil
+    }
+
+    private func detailSizeRange(at origin: CGFloat) -> ClosedRange<CGFloat> {
+        let minimum = FeatureAnnouncement.minimumDetail
+        return minimum...max(minimum, min(FeatureAnnouncement.maximumDetail, 1 - origin))
+    }
+
+    private func detailSlider(_ title: String, _ key: WritableKeyPath<CGRect, CGFloat>,
+                              range: ClosedRange<CGFloat>) -> some View {
+        InspectorSlider(title, value: Binding(get: { detailDraft?[keyPath: key] ?? range.lowerBound },
+            set: { detailDraft?[keyPath: key] = $0 }), range: range, format: .percent())
     }
 
     private func announcementText(_ key: WritableKeyPath<FeatureAnnouncement, String>, maximum: Int) -> Binding<String> {
@@ -396,17 +452,25 @@ struct ScreenshotCompositionWindow: View {
     private var canvas: some View {
         GeometryReader { proxy in
             let size = isAnnouncement ? announcementFormat.size : model.document.size
-            let scale = max(0.01, min((proxy.size.width - 64) / size.width, (proxy.size.height - 64) / size.height))
+            let previewWidth = isAnnouncement && phonePreview ? min(390, proxy.size.width - 64) : proxy.size.width - 64
+            let scale = max(0.01, min(previewWidth / size.width, (proxy.size.height - 64) / size.height))
+            let renderScale = isAnnouncement ? min(1, scale * displayScale) : scale
             ZStack {
                 EditorChrome.workspace
                 ZStack(alignment: .topLeading) {
                     TransparencyGrid()
                     // The same renderer drives preview and export, so gradients,
                     // alpha, rounding and shadows cannot diverge between them.
-                    if let image = try? ScreenshotCompositionRenderer.render(model.document, scale: scale, format: announcementFormat) {
+                    if let image = try? ScreenshotCompositionRenderer.render(
+                        model.document, scale: renderScale, format: announcementFormat, showsCalloutOutline: detailDraft == nil
+                    ) {
                         Image(decorative: image, scale: 1).resizable()
                     }
-                    if !isAnnouncement {
+                    if let draft = detailDraft, let announcement = model.document.announcement,
+                       let screenshot = model.document.screenshots.first {
+                        let media = announcement.mediaLayout(for: screenshot.image, in: announcement.layout(for: announcementFormat).screenshotArea)
+                        detailSelection(draft, screenshot: media.screenshotRect, canvasHeight: size.height, scale: scale)
+                    } else if !isAnnouncement {
                         ForEach(model.document.screenshots) { item in
                             itemControls(item, scale: scale)
                         }
@@ -425,6 +489,31 @@ struct ScreenshotCompositionWindow: View {
                 .overlay(Rectangle().stroke(dropTarget ? EditorChrome.accent : EditorChrome.border, lineWidth: dropTarget ? 3 : 1))
             }
         }
+    }
+
+    private func detailSelection(_ draft: CGRect, screenshot: CGRect, canvasHeight: CGFloat, scale: CGFloat) -> some View {
+        let width = screenshot.width * scale
+        let height = screenshot.height * scale
+        return Rectangle().fill(.clear)
+            .frame(width: width, height: height)
+            .contentShape(Rectangle())
+            .overlay(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 3)
+                    .strokeBorder(.black.opacity(0.7), lineWidth: 3)
+                    .overlay { RoundedRectangle(cornerRadius: 3).strokeBorder(.white, style: StrokeStyle(lineWidth: 1, dash: [4, 3])) }
+                    .frame(width: draft.width * width, height: draft.height * height)
+                    .offset(x: draft.minX * width, y: draft.minY * height)
+                    .allowsHitTesting(false)
+            }
+            .gesture(DragGesture(minimumDistance: 3).onChanged { value in
+                let start = CGPoint(x: value.startLocation.x / width, y: value.startLocation.y / height)
+                let end = CGPoint(x: value.location.x / width, y: value.location.y / height)
+                if let detail = FeatureAnnouncement.detailSelection(from: start, to: end) {
+                    detailDraft = detail
+                }
+            })
+            .offset(x: screenshot.minX * scale, y: (canvasHeight - screenshot.maxY) * scale)
+            .accessibilityHidden(true)
     }
 
     private func itemControls(_ item: CompositionScreenshot, scale: CGFloat) -> some View {
@@ -475,6 +564,8 @@ struct ScreenshotCompositionWindow: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 174)
+                Toggle("Phone Size", isOn: $phonePreview).toggleStyle(.checkbox)
+                    .help("Preview the post at up to 390 points wide.")
                 Spacer()
                 let size = announcementFormat.size
                 Text("\(Int(size.width)) × \(Int(size.height)) px")
@@ -549,6 +640,7 @@ struct ScreenshotCompositionWindow: View {
             panel.prompt = "Export Both Sizes"
             panel.begin { response in
                 guard response == .OK, let directory = panel.url else { return }
+                applyCallout()
                 beginExport { snapshot in
                     try ScreenshotCompositionRenderer.exportAnnouncement(snapshot, to: directory)
                 }
