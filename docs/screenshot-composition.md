@@ -34,8 +34,11 @@ baked-in shadow, allowing the per-image shadow to remain adjustable.
 
 1. Right-click a screenshot in the floating preview and choose **Create Social Post…**,
    or choose **Post → Feature Announcement…** in **Compose Screenshots**.
-2. Add a headline and, if you like, a caption and logo. Use **Replace Screenshot…**
-   to change the image while keeping the copy and logo.
+2. Choose **Headline Above**, **Screenshot First**, or **Side by Side** under **Layout**.
+   Side by Side works well with short copy and a tall screenshot. BetterShot balances
+   two-line headlines automatically. Press **Option–Return** in the headline to choose where it wraps.
+   Add an optional caption and logo. Use **Replace Screenshot…** to keep the copy and logo
+   while swapping the image.
 3. Click **Add Callout**, drag over a detail on the screenshot, then click
    **Apply Callout**. You can also enter the selection under **Adjust Selection**.
    Replacing the screenshot clears its callout. Undo restores both.
@@ -47,7 +50,7 @@ baked-in shadow, allowing the per-image shadow to remain adjustable.
 ### Save and reuse a post
 
 - Choose **Post → Save Post** or press **⌘S** to save a `.bettershotpost` file.
-  It contains the screenshot, text, logo, and callout.
+  It contains the layout, screenshot, text, logo, and callout.
 - Double-click a saved post in Finder or choose **Post → Open Post…** in either composer.
 - Choose **Post → Duplicate Post** to open an independent copy, then save it under its own name.
   Replacing the screenshot clears its callout and keeps the text and logo.

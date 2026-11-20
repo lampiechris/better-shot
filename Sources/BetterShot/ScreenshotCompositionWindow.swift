@@ -362,10 +362,17 @@ struct ScreenshotCompositionWindow: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 section("Post") {
+                    Picker("Layout", selection: Binding(
+                        get: { model.document.announcement?.arrangement ?? .headlineAbove },
+                        set: { arrangement in model.change { $0.announcement?.arrangement = arrangement } }
+                    )) {
+                        ForEach(FeatureAnnouncement.Arrangement.allCases) { Text($0.title).tag($0) }
+                    }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Headline").font(.callout)
                         TextField("Headline", text: announcementText(\.headline, maximum: FeatureAnnouncement.headlineLimit), axis: .vertical)
                             .textFieldStyle(.roundedBorder).lineLimit(2...3)
+                            .help("Press Option-Return to insert a line break.")
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Caption (optional)").font(.callout)
@@ -630,8 +637,8 @@ struct ScreenshotCompositionWindow: View {
                         Image(decorative: image, scale: 1).resizable()
                     }
                     if let draft = detailDraft, let announcement = model.document.announcement,
-                       let screenshot = model.document.screenshots.first {
-                        let media = announcement.mediaLayout(for: screenshot.image, in: announcement.layout(for: announcementFormat).screenshotArea)
+                       let media = announcement.layout(for: announcementFormat,
+                           screenshot: model.document.screenshots.first?.image).media {
                         detailSelection(draft, screenshot: media.screenshotRect, canvasHeight: size.height, scale: scale)
                     } else if !isAnnouncement {
                         ForEach(model.document.screenshots) { item in

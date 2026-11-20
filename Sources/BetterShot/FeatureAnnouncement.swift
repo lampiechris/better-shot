@@ -5,6 +5,23 @@ import Foundation
 nonisolated struct FeatureAnnouncement: Sendable {
     static let headlineLimit = 90
     static let captionLimit = 160
+
+    enum Arrangement: String, Codable, CaseIterable, Identifiable, Sendable {
+        case headlineAbove
+        case screenshotFirst
+        case sideBySide
+
+        var id: Self { self }
+
+        var title: String {
+            switch self {
+            case .headlineAbove: "Headline Above"
+            case .screenshotFirst: "Screenshot First"
+            case .sideBySide: "Side by Side"
+            }
+        }
+    }
+
     enum Format: String, CaseIterable, Identifiable, Sendable {
         case square = "1:1"
         case portrait = "4:5"
@@ -20,6 +37,7 @@ nonisolated struct FeatureAnnouncement: Sendable {
     var caption = ""
     var logo: CGImage?
     var callout: CGRect?
+    var arrangement: Arrangement = .headlineAbove
 
     // Source coordinates are normalized with the origin at the top left.
     static let defaultCallout = CGRect(x: 0.375, y: 0.375, width: 0.25, height: 0.25)
@@ -48,12 +66,12 @@ nonisolated struct FeatureAnnouncement: Sendable {
         let logoRect: CGRect?
         let headline: CTFrame?
         let caption: CTFrame?
+        let media: MediaLayout?
+        let copyOffset: CGFloat
 
-        func draw(in context: CGContext, logo: CGImage?, insetAboveScreenshot: CGFloat) {
+        func draw(in context: CGContext, logo: CGImage?) {
             context.saveGState()
-            // The screenshot is centered in its area. Move the copy down by
-            // the unused space above it to keep the group together and centered.
-            context.translateBy(x: 0, y: -insetAboveScreenshot)
+            context.translateBy(x: 0, y: copyOffset)
             if let logo, let logoRect { context.draw(logo, in: logoRect) }
             context.textMatrix = .identity
             if let headline { CTFrameDraw(headline, context) }
@@ -149,25 +167,47 @@ nonisolated struct FeatureAnnouncement: Sendable {
         return image.cropping(to: rect.integral.intersection(CGRect(x: 0, y: 0, width: width, height: height)))
     }
 
-    func layout(for format: Format) -> Layout {
+    func layout(for format: Format, screenshot: CGImage? = nil) -> Layout {
         let size = format.size
         let margin: CGFloat = 72
-        let width = size.width - margin * 2
-        var top = size.height - margin
+        let bounds = CGRect(origin: .zero, size: size).insetBy(dx: margin, dy: margin)
+        let columns = arrangement == .sideBySide && hasContent && screenshot != nil
+        let width: CGFloat = columns ? (format == .square ? 390 : 416) : bounds.width
+        var top = bounds.maxY
         let logoRect = logo.map {
             Self.fit($0, in: CGRect(x: margin, y: top - 76, width: 260, height: 76), centered: false)
         }
-        if logoRect != nil { top -= 104 }
-        let title = Self.textFrame(headline, size: 76, maxHeight: 190, bold: true,
+        if let logoRect { top = logoRect.minY - 28 }
+        let title = Self.textFrame(headline, size: columns ? 62 : 76, maxHeight: columns ? 300 : 190, bold: true,
                                    x: margin, top: top, width: width, opacity: 1)
         if let title { top -= title.height + 16 }
-        let subtitle = Self.textFrame(caption, size: 37, maxHeight: 110, bold: false,
+        let subtitle = Self.textFrame(caption, size: columns ? 32 : 37, maxHeight: columns ? 166 : 110, bold: false,
                                       x: margin, top: top, width: width, opacity: 0.8)
-        if let subtitle { top -= subtitle.height + 16 }
-        let gap: CGFloat = title == nil && subtitle == nil ? 0 : 32
-        let screenshotArea = CGRect(x: margin, y: margin, width: width, height: top - gap - margin)
+        let copyBottom = if let subtitle { top - subtitle.height }
+            else if title != nil { top + 16 }
+            else { logoRect?.minY ?? top }
+        let copyHeight = bounds.maxY - copyBottom
+        let gap: CGFloat = copyHeight > 0 ? 48 : 0
+        let screenshotFirst = arrangement == .screenshotFirst && screenshot != nil
+        let screenshotArea: CGRect
+        if columns {
+            let left = bounds.minX + width + gap
+            screenshotArea = CGRect(x: left, y: bounds.minY, width: bounds.maxX - left, height: bounds.height)
+        } else {
+            screenshotArea = CGRect(x: bounds.minX, y: bounds.minY + (screenshotFirst ? copyHeight + gap : 0),
+                                    width: bounds.width, height: bounds.height - copyHeight - gap)
+        }
+        let media = screenshot.map { mediaLayout(for: $0, in: screenshotArea) }
+        let copyOffset: CGFloat
+        if columns {
+            copyOffset = (copyHeight - bounds.height) / 2
+        } else if screenshotFirst, let media {
+            copyOffset = bounds.minY + copyHeight + media.insetAboveScreenshot - bounds.maxY
+        } else {
+            copyOffset = -(media?.insetAboveScreenshot ?? 0)
+        }
         return Layout(size: size, screenshotArea: screenshotArea, logoRect: logoRect,
-                      headline: title?.frame, caption: subtitle?.frame)
+                      headline: title?.frame, caption: subtitle?.frame, media: media, copyOffset: copyOffset)
     }
 
     static func fit(_ image: CGImage, in bounds: CGRect, centered: Bool = true) -> CGRect {
@@ -183,30 +223,72 @@ nonisolated struct FeatureAnnouncement: Sendable {
         _ value: String, size: CGFloat, maxHeight: CGFloat, bold: Bool,
         x: CGFloat, top: CGFloat, width: CGFloat, opacity: CGFloat
     ) -> (frame: CTFrame, height: CGFloat)? {
-        let text = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard !text.isEmpty else { return nil }
+        let unwrapped = value.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        guard !unwrapped.isEmpty else { return nil }
+        let text = bold ? value.replacingOccurrences(of: "\r\n", with: "\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: .newlines)
+            .map { $0.split(whereSeparator: \.isWhitespace).joined(separator: " ") }.joined(separator: "\n") : unwrapped
         var fontSize = size
         while fontSize >= 14 {
             let style: CTFontUIFontType = bold ? .emphasizedSystem : .system
             let font = CTFontCreateUIFontForLanguage(style, fontSize, nil)
                 ?? CTFontCreateWithName("Helvetica" as CFString, fontSize, nil)
-            var fit = CFRange()
-            let attributed = NSAttributedString(string: text, attributes: [
+            let attributes: [NSAttributedString.Key: Any] = [
                 NSAttributedString.Key(kCTFontAttributeName as String): font,
                 NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: opacity)
-            ])
-            let typesetter = CTFramesetterCreateWithAttributedString(attributed)
-            let range = CFRange(location: 0, length: attributed.length)
-            let suggested = CTFramesetterSuggestFrameSizeWithConstraints(typesetter, range, nil,
-                CGSize(width: width, height: maxHeight), &fit)
-            if fit.length == range.length {
+            ]
+            func fittedFrame(_ copy: String) -> (frame: CTFrame, height: CGFloat)? {
+                let attributed = NSAttributedString(string: copy, attributes: attributes)
+                let typesetter = CTFramesetterCreateWithAttributedString(attributed)
+                let range = CFRange(location: 0, length: attributed.length)
+                var fit = CFRange()
+                let suggested = CTFramesetterSuggestFrameSizeWithConstraints(typesetter, range, nil,
+                    CGSize(width: width, height: maxHeight), &fit)
+                guard fit.length == range.length else { return nil }
                 let height = min(maxHeight, ceil(suggested.height) + 2)
                 let rect = CGRect(x: x, y: top - height, width: width, height: height)
                 let frame = CTFramesetterCreateFrame(typesetter, range, CGPath(rect: rect, transform: nil), nil)
-                if CTFrameGetVisibleStringRange(frame).length == range.length { return (frame, height) }
+                return CTFrameGetVisibleStringRange(frame).length == range.length ? (frame, height) : nil
+            }
+            if let frame = fittedFrame(text) {
+                if bold, !text.contains("\n"), CFArrayGetCount(CTFrameGetLines(frame.frame)) == 2,
+                   let balanced = balancedHeadline(text, width: width, attributes: attributes),
+                   let balancedFrame = fittedFrame(balanced) {
+                    return balancedFrame
+                }
+                return frame
             }
             fontSize -= 2
         }
+        // A pasted headline can contain more line breaks than fit at any readable size.
+        if text != unwrapped {
+            return textFrame(unwrapped, size: size, maxHeight: maxHeight, bold: bold,
+                             x: x, top: top, width: width, opacity: opacity)
+        }
         return nil
+    }
+
+    private static func balancedHeadline(_ text: String, width: CGFloat,
+                                         attributes: [NSAttributedString.Key: Any]) -> String? {
+        let words = text.split(separator: " ")
+        guard words.count > 1 else { return nil }
+        func lineWidth(_ content: String) -> CGFloat {
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: content, attributes: attributes))
+            return CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        }
+        var best: String?
+        var smallestDifference = CGFloat.infinity
+        for split in 1..<words.count {
+            let first = words[..<split].joined(separator: " ")
+            let second = words[split...].joined(separator: " ")
+            let firstWidth = lineWidth(first)
+            let secondWidth = lineWidth(second)
+            let difference = abs(firstWidth - secondWidth)
+            if max(firstWidth, secondWidth) <= width, difference < smallestDifference {
+                best = first + "\n" + second
+                smallestDifference = difference
+            }
+        }
+        return best
     }
 }

@@ -272,8 +272,9 @@ to test **Create Social Post…** from a sample capture card.
 
 Feature Announcement opens in its own composer window from the capture preview
 or the freeform composer toolbar. `FeatureAnnouncement` lays out the same
-screenshot and copy in both ratios. Keep preview and paired PNG exports on the
-shared composition renderer. Callouts store normalized top-left screenshot
+screenshot and copy in both ratios. Preview, callout selection, and paired PNG
+exports share this geometry. Older post files without a layout use Headline Above.
+Callouts store normalized top-left screenshot
 coordinates so both ratios enlarge the same original pixels. Phone Size affects
 the preview scale only. Move the finished folder into place after both
 images have been written.

@@ -298,12 +298,10 @@ nonisolated enum ScreenshotCompositionRenderer {
     static func render(_ document: ScreenshotComposition, scale: CGFloat,
                        format: FeatureAnnouncement.Format = .square, showsCalloutOutline: Bool = true) throws -> CGImage {
         let announcement = document.announcement
-        let post = announcement?.layout(for: format)
+        let post = announcement?.layout(for: format, screenshot: document.screenshots.first?.image)
         let canvasSize = post?.size ?? document.size
         let size = try outputSize(canvasSize, scale: scale)
-        let media = post.flatMap { layout in
-            document.screenshots.first.flatMap { announcement?.mediaLayout(for: $0.image, in: layout.screenshotArea) }
-        }
+        let media = post?.media
         guard let context = CGContext(data: nil, width: Int(size.width), height: Int(size.height),
             bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { throw CocoaError(.fileWriteUnknown) }
@@ -342,8 +340,7 @@ nonisolated enum ScreenshotCompositionRenderer {
         context.interpolationQuality = .high
         media?.detail?.drawCard(in: context, outputScale: scale)
         if let post {
-            post.draw(in: context, logo: announcement?.logo,
-                      insetAboveScreenshot: media?.insetAboveScreenshot ?? 0)
+            post.draw(in: context, logo: announcement?.logo)
         }
         guard let image = context.makeImage() else { throw CocoaError(.fileWriteUnknown) }
         return image

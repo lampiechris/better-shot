@@ -27,6 +27,7 @@ nonisolated enum FeatureAnnouncementProject {
         var logoPNG: Data?
         var callout: CGRect?
         var screenshot: Screenshot?
+        var arrangement: FeatureAnnouncement.Arrangement?
     }
 
     private struct Screenshot: Codable {
@@ -57,7 +58,8 @@ nonisolated enum FeatureAnnouncementProject {
                        shadow: $0.shadow, shadowStyle: $0.shadowStyle.rawValue)
         }
         let contents = FileContents(headline: post.headline, caption: post.caption,
-            logoPNG: try post.logo.map(encodePNG), callout: post.callout, screenshot: screenshot)
+            logoPNG: try post.logo.map(encodePNG), callout: post.callout, screenshot: screenshot,
+            arrangement: post.arrangement == .headlineAbove ? nil : post.arrangement)
         let encoder = PropertyListEncoder()
         encoder.outputFormat = .binary
         let data = try encoder.encode(contents)
@@ -82,7 +84,7 @@ nonisolated enum FeatureAnnouncementProject {
               contents.caption.count <= FeatureAnnouncement.captionLimit else { throw ProjectError.invalid }
         let announcement = FeatureAnnouncement(headline: contents.headline, caption: contents.caption,
             logo: try contents.logoPNG.map { try decodePNG($0, pixelLimit: 1024 * 1024) },
-            callout: contents.callout)
+            callout: contents.callout, arrangement: contents.arrangement ?? .headlineAbove)
         if let rect = contents.callout {
             // Tolerate normal floating-point roundoff at the selection edges.
             let epsilon: CGFloat = 0.000_001

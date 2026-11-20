@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import ImageIO
 import SwiftUI
 @testable import BetterShot
@@ -230,12 +231,13 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
         precondition(image.width == Int(size.width) && image.height == Int(size.height))
         let scaled = try ScreenshotCompositionRenderer.render(model.document, scale: 0.5, format: format)
         precondition(scaled.width * 2 == image.width && scaled.height * 2 == image.height)
-        let layout = model.document.announcement!.layout(for: format)
+        let layout = model.document.announcement!.layout(for: format, screenshot: model.selection?.image)
         precondition(layout.headline != nil && layout.caption != nil && layout.logoRect != nil)
         let bitmap = NSBitmapImageRep(cgImage: image)
         let center = bitmap.colorAt(x: Int(layout.screenshotArea.midX), y: Int(size.height - layout.screenshotArea.midY))!
         precondition(center.usingColorSpace(.sRGB)!.blueComponent > 0.9, "The full replacement screenshot must render")
-        let logo = bitmap.colorAt(x: Int(layout.logoRect!.midX), y: Int(size.height - layout.logoRect!.midY))!
+        let logo = bitmap.colorAt(x: Int(layout.logoRect!.midX),
+                                  y: Int(size.height - layout.logoRect!.midY - layout.copyOffset))!
         precondition(logo.usingColorSpace(.sRGB)!.blueComponent > 0.9, "The optional logo must render")
     }
 
@@ -267,8 +269,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     let calloutFolder = try ScreenshotCompositionRenderer.exportAnnouncement(model.document, to: exports)
     for format in FeatureAnnouncement.Format.allCases {
         let announcement = model.document.announcement!
-        let media = announcement.mediaLayout(for: model.document.screenshots[0].image,
-            in: announcement.layout(for: format).screenshotArea)
+        let media = announcement.layout(for: format, screenshot: model.selection?.image).media!
         let detail = media.detail!
         precondition(detail.card.maxY < media.screenshotRect.minY)
         precondition(detail.imageRect.width > selection.width * media.screenshotRect.width)
@@ -293,7 +294,12 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
                      "Preview and export must cast the same relative shadow")
     }
 
+    try checkAnnouncementLayouts(model, tallImage: replacement)
     let postURL = directory.appendingPathComponent("Launch.bettershotpost")
+    try FeatureAnnouncementProject.write(model.document, to: postURL)
+    let defaultPost = try FeatureAnnouncementProject.read(from: postURL)
+    precondition(defaultPost.announcement.arrangement == .headlineAbove, "Posts without a layout field use Headline Above")
+    model.change { $0.announcement?.arrangement = .screenshotFirst }
     model.calloutDraft = selection.offsetBy(dx: 0.02, dy: 0.01)
     model.applyCalloutDraft()
     let savedRevision = model.document.revision
@@ -307,6 +313,7 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
     precondition(reopened.document.announcement?.headline == model.document.announcement?.headline)
     precondition(reopened.document.announcement?.caption == model.document.announcement?.caption)
     precondition(reopened.document.announcement?.callout == savedCallout)
+    precondition(reopened.document.announcement?.arrangement == .screenshotFirst)
     precondition(reopened.selection?.name == fixture.lastPathComponent)
     try FileManager.default.removeItem(at: fixture)
     let reopenedImage = try ScreenshotCompositionRenderer.render(reopened.document, scale: 1, format: .portrait)
@@ -346,4 +353,50 @@ private func checkFeatureAnnouncement(screenshot: URL, replacement: URL, directo
                      to: snapshots.appendingPathComponent("announcement-\(scheme)-980.png"), height: 680)
     }
     print("PASS Feature Announcement callouts, paired exports, lossless editable project round trip, and independent copies")
+}
+
+@MainActor
+private func checkAnnouncementLayouts(_ model: ScreenshotCompositionModel, tallImage: URL) throws {
+    func lines(in frame: CTFrame) -> [CTLine] {
+        CTFrameGetLines(frame) as! [CTLine]
+    }
+    var balancing = FeatureAnnouncement(headline: "BetterShot makes sharing simpler")
+    let balanced = lines(in: balancing.layout(for: .square).headline!)
+    precondition(balanced.count == 2)
+    let widths = balanced.map { CTLineGetTypographicBounds($0, nil, nil, nil) }
+    precondition(widths.min()! / widths.max()! > 0.60, "A headline should avoid a short last line when it can balance")
+    balancing.headline = "Short\nA deliberately longer second line"
+    let manual = lines(in: balancing.layout(for: .square).headline!)
+    precondition(manual.count == 2 && CTLineGetStringRange(manual[1]).location == 6,
+                 "Typed line breaks take precedence over balancing")
+
+    model.importImages([tallImage])
+    model.change {
+        $0.announcement?.headline = "A clearer way\nto share"
+        $0.announcement?.callout = FeatureAnnouncement.defaultCallout
+    }
+    var snapshots = model.document
+    for arrangement in FeatureAnnouncement.Arrangement.allCases {
+        snapshots.announcement?.arrangement = arrangement
+        for format in FeatureAnnouncement.Format.allCases {
+            let layout = snapshots.announcement!.layout(for: format, screenshot: snapshots.screenshots.first!.image)
+            let media = layout.media!
+            let headline = CTFrameGetPath(layout.headline!).boundingBox.offsetBy(dx: 0, dy: layout.copyOffset)
+            let caption = CTFrameGetPath(layout.caption!).boundingBox.offsetBy(dx: 0, dy: layout.copyOffset)
+            let logo = layout.logoRect!.offsetBy(dx: 0, dy: layout.copyOffset)
+            let copy = headline.union(caption).union(logo)
+            let mediaBounds = media.screenshotRect.union(media.detail!.card)
+            let canvas = CGRect(origin: .zero, size: format.size)
+            precondition(canvas.contains(copy) && canvas.contains(mediaBounds) && !copy.intersects(mediaBounds))
+            switch arrangement {
+            case .headlineAbove: precondition(copy.minY > mediaBounds.maxY)
+            case .screenshotFirst: precondition(mediaBounds.minY > copy.maxY)
+            case .sideBySide: precondition(copy.maxX < mediaBounds.minX)
+            }
+            let phone = try ScreenshotCompositionRenderer.render(snapshots, scale: 390 / format.size.width, format: format)
+            precondition(phone.width == 390)
+        }
+    }
+    model.undo()
+    model.undo()
 }
